@@ -1,0 +1,416 @@
+╔══════════════════════════════════════════════════════════════════════════════════════════════════╗
+║         OPTIMIZACIÓN DE DECISIONES BAJO INCERTIDUMBRE Y ANÁLISIS DE INFORMACIÓN MUESTRAL         ║
+║ ──────────────────────────────────────────────────────────────────────────────────────────────── ║
+║  Caso Operativo Ruta Medellín (Terminal del Sur) – Montebello · Franja de despachos de los       ║
+║  sábados                                                                                         ║
+║  Investigación de Operaciones — Ingeniería Informática                                           ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                      CONTEXTO DEL PROBLEMA                                       │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────── │
+│  ¿QUÉ ES ESTE ESTUDIO?                                                                           │
+│  Se analiza la operación logística de los días sábado en la franja crítica de despachos de una   │
+│  empresa real de transporte intermunicipal, en la ruta Ruta Medellín (Terminal del Sur) –        │
+│  Montebello.                                                                                     │
+│                                                                                                  │
+│  LA PREGUNTA QUE SE RESUELVE                                                                     │
+│  Bajo el marco del Decreto 1079 de 2015 (Reglamento del Sector Transporte, Colombia), la         │
+│  empresa debe decidir entre d1 (Invertir en flota: adecuar despachos y flota con proyección      │
+│  directa al corredor turístico del corregimiento de sabaletas) y d2 (Mantener la ruta:           │
+│  conservar estrictamente la ruta tradicional terminal del sur – casco urbano de montebello). El  │
+│  resultado económico de esa decisión depende de un factor que la empresa no controla: el estado  │
+│  regulatorio.                                                                                    │
+│                                                                                                  │
+│  LOS ESCENARIOS POSIBLES (estados de la naturaleza)                                              │
+│  • s1 — Regulación Permisiva (30%): Aprobación / flexibilidad regulatoria para la extensión de   │
+│  la ruta hacia Sabaletas.                                                                        │
+│  • s2 — Regulación Estricta (70%): Restricción legal estricta de ruta fija, limitada a la        │
+│  cabecera municipal.                                                                             │
+│                                                                                                  │
+│  LO QUE SE BUSCA                                                                                 │
+│  • Determinar la alternativa que maximiza la utilidad monetaria esperada.                        │
+│  • Evaluar qué tan estable es esa decisión si cambian las probabilidades (sensibilidad y punto   │
+│  de corte).                                                                                      │
+│  • Medir cuánto vale reducir la incertidumbre: información perfecta (EVPI) e información         │
+│  muestral (EVSI).                                                                                │
+│  • Concluir, con cifras, si conviene o no pagar una consultoría jurídica previa.                 │
+│                                                                                                  │
+│  ORIGEN DE LOS DATOS — IMPORTANTE                                                                │
+│  Los datos utilizados en este estudio NO son inventados ni simulados con fines académicos.       │
+│  Danilo Tangarife hace parte del equipo de trabajo y labora actualmente en la empresa de         │
+│  transporte analizada, por lo que cuenta con acceso directo y autorizado a la información        │
+│  operativa real: utilidades por despacho, niveles de ocupación de los sábados y condiciones      │
+│  regulatorias vigentes de la ruta. Las cifras de la matriz de pagos provienen de esa fuente      │
+│  primaria, lo que hace que las conclusiones de este modelo sean directamente aplicables a la     │
+│  operación.                                                                                      │
+│                                                                                                  │
+│  CÓMO LEER LAS CIFRAS                                                                            │
+│  Todos los pagos están expresados en miles COP: un valor de 1.400 equivale a 1.400.000 COP.      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════════════════════ PASO 1: MATRIZ DE PAGOS ══════════════════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Utilidad operativa del sábado para cada combinación de decisión y estado regulatorio, en miles
+  COP.
+
+┌────────────────────────┬───────────────────────────┬──────────────────────────┐
+│Alternativa             │  s1 · Regulación Permisiva│  s2 · Regulación Estricta│
+├────────────────────────┼───────────────────────────┼──────────────────────────┤
+│d1 · Invertir en flota  │                      1.400│                       300│
+│d2 · Mantener la ruta   │                        950│                       700│
+│Probabilidad a priori   │                       0,30│                      0,70│
+└────────────────────────┴───────────────────────────┴──────────────────────────┘
+
+  Suma de probabilidades = 1,00 ✔  Objetivo del modelo: MAXIMIZAR utilidad.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+════════════════════ PASO 2: CRITERIOS BAJO INCERTIDUMBRE (SIN PROBABILIDADES) ═════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+» Optimista (maximax)
+  Se supone el escenario más favorable para cada alternativa y se escoge el mejor de esos
+  resultados.
+┌────────────────────────┬────────────────────┬───────────┐
+│Alternativa             │  Valor del criterio│           │
+├────────────────────────┼────────────────────┼───────────┤
+│d1 · Invertir en flota  │               1.400│  ◄ ELEGIDA│
+│d2 · Mantener la ruta   │                 950│           │
+└────────────────────────┴────────────────────┴───────────┘
+  Decisión por este criterio: d1 — Invertir en flota (valor 1.400).
+
+» Conservador (maximin)
+  Se supone el escenario más adverso para cada alternativa y se escoge el mejor de esos peores
+  resultados.
+┌────────────────────────┬────────────────────┬───────────┐
+│Alternativa             │  Valor del criterio│           │
+├────────────────────────┼────────────────────┼───────────┤
+│d1 · Invertir en flota  │                 300│           │
+│d2 · Mantener la ruta   │                 700│  ◄ ELEGIDA│
+└────────────────────────┴────────────────────┴───────────┘
+  Decisión por este criterio: d2 — Mantener la ruta (valor 700).
+
+» Mínimo del máximo arrepentimiento (minimax regret)
+  Se mide cuánto se pierde por no haber elegido la mejor alternativa en cada estado y se minimiza
+  la peor pérdida.
+┌────────────────────────┬────────────────────┬───────────┐
+│Alternativa             │  Valor del criterio│           │
+├────────────────────────┼────────────────────┼───────────┤
+│d1 · Invertir en flota  │                 400│  ◄ ELEGIDA│
+│d2 · Mantener la ruta   │                 450│           │
+└────────────────────────┴────────────────────┴───────────┘
+  Decisión por este criterio: d1 — Invertir en flota (valor 400).
+
+» Matriz de arrepentimiento utilizada en el tercer criterio
+┌────────────────────────┬──────────────────────┬─────────────────────┬────────────────────────┐
+│Alternativa             │  Regulación Permisiva│  Regulación Estricta│  Máximo arrepentimiento│
+├────────────────────────┼──────────────────────┼─────────────────────┼────────────────────────┤
+│d1 · Invertir en flota  │                     0│                  400│                     400│
+│d2 · Mantener la ruta   │                   450│                    0│                     450│
+└────────────────────────┴──────────────────────┴─────────────────────┴────────────────────────┘
+
+  Los criterios NO coinciden entre sí: Optimista → d1; Conservador → d2; Mínimo del máximo
+  arrepentimiento → d1. Esto es esperable, pues cada criterio refleja una actitud distinta frente
+  al riesgo; por eso el estudio continúa incorporando las probabilidades, que sí permiten una
+  decisión fundamentada.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══════════════════════ PASO 3: VALOR ESPERADO CON LAS PROBABILIDADES A PRIORI ══════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Se pondera cada pago por la probabilidad de su estado: EV(d) = Σ P(s)·pago(d,s).
+
+  EV(d1) = 0,30·(1.400) + 0,70·(300) = 630,00   →  630.000 COP
+  EV(d2) = 0,30·(950) + 0,70·(700) = 775,00   →  775.000 COP
+
+┌────────────────────────┬────────────────┬─────────────┬──────────┐
+│Alternativa             │  Valor esperado│  Equivalente│          │
+├────────────────────────┼────────────────┼─────────────┼──────────┤
+│d1 · Invertir en flota  │          630,00│  630.000 COP│          │
+│d2 · Mantener la ruta   │          775,00│  775.000 COP│  ◄ ÓPTIMA│
+└────────────────────────┴────────────────┴─────────────┴──────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              DECISIÓN CON LA INFORMACIÓN DISPONIBLE                              │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────── │
+│  Alternativa óptima: d2 — Mantener la ruta                                                       │
+│  Valor esperado: 775.000 COP                                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════════════════ PASO 4: ANÁLISIS DE SENSIBILIDAD ═════════════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Se somete a cambio la variable P(s1) = p (por lo tanto P(s2) = 1 − p) y se observa cómo se
+  comporta la decisión en todo su recorrido.
+
+  d1:
+      EV(d1) = P(s1)·(1.400) + P(s2)·(300)
+      EV(d1) = 1.400p + (1 − p)·(300)
+      EV(d1) = 1.400p + 300 − 300p
+      EV(d1) = 1.100p + 300,00
+
+  d2:
+      EV(d2) = P(s1)·(950) + P(s2)·(700)
+      EV(d2) = 950p + (1 − p)·(700)
+      EV(d2) = 950p + 700 − 700p
+      EV(d2) = 250p + 700,00
+
+┌────────┬──────────┬────────┬────────────────────────┬──────────┐
+│P(s1)   │    EV(d1)│  EV(d2)│         Decisión óptima│     Valor│
+├────────┼──────────┼────────┼────────────────────────┼──────────┤
+│0%      │    300,00│  700,00│   d2 · Mantener la ruta│    700,00│
+│10%     │    410,00│  725,00│   d2 · Mantener la ruta│    725,00│
+│20%     │    520,00│  750,00│   d2 · Mantener la ruta│    750,00│
+│30%     │    630,00│  775,00│   d2 · Mantener la ruta│    775,00│
+│40%     │    740,00│  800,00│   d2 · Mantener la ruta│    800,00│
+│47,06%  │    817,65│  817,65│   INDIFERENTE (d1 = d2)│    817,65│
+│50%     │    850,00│  825,00│  d1 · Invertir en flota│    850,00│
+│60%     │    960,00│  850,00│  d1 · Invertir en flota│    960,00│
+│70%     │  1.070,00│  875,00│  d1 · Invertir en flota│  1.070,00│
+│80%     │  1.180,00│  900,00│  d1 · Invertir en flota│  1.180,00│
+│90%     │  1.290,00│  925,00│  d1 · Invertir en flota│  1.290,00│
+│100%    │  1.400,00│  950,00│  d1 · Invertir en flota│  1.400,00│
+└────────┴──────────┴────────┴────────────────────────┴──────────┘
+
+  • Si 0,00% ≤ P(s1) ≤ 47,06% → la decisión óptima es d2 · Mantener la ruta.
+  • Si 47,06% ≤ P(s1) ≤ 100,00% → la decisión óptima es d1 · Invertir en flota.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════════════════════ PASO 5: ANÁLISIS GRÁFICO ═════════════════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Cada alternativa es una recta EV(d) = m·p + b sobre el eje p = P(s1) ∈ [0, 1]. Con dos puntos
+  por recta basta para graficarla.
+
+┌─────────────┬──────────────────────────┬─────────────┬─────────────┐
+│Alternativa  │Ecuación                  │Punto p = 0  │Punto p = 1  │
+├─────────────┼──────────────────────────┼─────────────┼─────────────┤
+│d1           │EV(d1) = 1.100p + 300,00  │(0 , 300)    │(1 , 1.400)  │
+│d2           │EV(d2) = 250p + 700,00    │(0 , 700)    │(1 , 950)    │
+└─────────────┴──────────────────────────┴─────────────┴─────────────┘
+
+  Gráfica generada automáticamente en: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION
+  OPERACIONES/EMPRESA/03_sensibilidad.png
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+════════════════════════ PASO 6: PUNTOS DE CORTE (IGUALACIÓN DE ECUACIONES) ════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+» d1 vs d2
+      EV(d1) = EV(d2)
+      1.100p + 300,00 = 250p + 700,00
+      850p = 400
+      p = 400 / 850 = 8/17
+      p = 0,4706  (47,06%)
+  Punto de corte válido en p = 0,4706 (47,06%), con un valor esperado común de 817.647,06 COP.
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    INTERPRETACIÓN DEL UMBRAL                                     │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────── │
+│  P(s1) debe superar 47,06% para que convenga cambiar a d1 · Invertir en flota.                   │
+│  Valor actual estimado: 30% → margen de 17,06 puntos porcentuales.                               │
+│  Conclusión: la decisión d2 es estable.                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════ PASO 7: VALOR ESPERADO DE LA INFORMACIÓN PERFECTA (EVPI) ═════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Si se supiera con certeza qué estado va a ocurrir, se elegiría la mejor alternativa en cada
+  caso.
+
+┌───────────────────────────┬──────────────┬──────────────────────────┬───────┐
+│Estado                     │Probabilidad  │Mejor decisión si ocurre  │   Pago│
+├───────────────────────────┼──────────────┼──────────────────────────┼───────┤
+│s1 · Regulación Permisiva  │0,30          │d1 · Invertir en flota    │  1.400│
+│s2 · Regulación Estricta   │0,70          │d2 · Mantener la ruta     │    700│
+└───────────────────────────┴──────────────┴──────────────────────────┴───────┘
+
+      EVcIP = 0,30·(1.400) + 0,70·(700) = 910,00
+      EVPI = EVcIP − EV(d2) = 910,00 − 775,00 = 135,00
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    LECTURA GERENCIAL DEL EVPI                                    │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────── │
+│  EVPI = 135.000 COP.                                                                             │
+│  Es el máximo que la empresa debería pagar por eliminar por completo la incertidumbre            │
+│  regulatoria. Ningún estudio, consultoría o asesoría puede valer más que esta cifra.             │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════ PASO 8: ANÁLISIS DE DECISIONES CON INFORMACIÓN MUESTRAL ══════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Antes de decidir se puede contratar una consultoría jurídica/operativa cuyo concepto es un
+  indicador imperfecto del estado real. Su confiabilidad se expresa como P(indicador | estado).
+
+┌──────────────────┬─────────┬─────────┐
+│Indicador         │  P(·|s1)│  P(·|s2)│
+├──────────────────┼─────────┼─────────┤
+│F · Favorable     │     0,65│     0,30│
+│U · Desfavorable  │     0,35│     0,70│
+│Suma por columna  │     1,00│     1,00│
+└──────────────────┴─────────┴─────────┘
+
+» Probabilidades marginales de cada resultado del estudio:
+      P(F) = 0,65·0,30 + 0,30·0,70 = 0,4050
+      P(U) = 0,35·0,30 + 0,70·0,70 = 0,5950
+      Suma = 1,0000 ✔
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══════════════════════ PASO 9: TEOREMA DE BAYES — PROBABILIDADES POSTERIORES ═══════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  P(s | indicador) = [ P(indicador | s) · P(s) ] / P(indicador)
+
+» Resultado Favorable (F) — P(F) = 0,4050
+┌───────────────────────────┬─────────────┬────────┬──────────┬───────────┬─────────┐
+│Estado                     │  P(s) previa│  P(F|s)│  Conjunta│  P(s|ind.)│        %│
+├───────────────────────────┼─────────────┼────────┼──────────┼───────────┼─────────┤
+│s1 · Regulación Permisiva  │         0,30│    0,65│    0,1950│     0,4815│   48,15%│
+│s2 · Regulación Estricta   │         0,70│    0,30│    0,2100│     0,5185│   51,85%│
+│Total                      │         1,00│       —│    0,4050│     1,0000│  100,00%│
+└───────────────────────────┴─────────────┴────────┴──────────┴───────────┴─────────┘
+  Valores esperados revisados con estas probabilidades:
+      EV(d1|F) = 0,4815·(1.400) + 0,5185·(300) = 829,63  ◄ ÓPTIMA
+      EV(d2|F) = 0,4815·(950) + 0,5185·(700) = 820,37
+  Si el estudio resulta Favorable, la decisión CAMBIA a d1 · Invertir en flota con 829.629,63 COP.
+
+» Resultado Desfavorable (U) — P(U) = 0,5950
+┌───────────────────────────┬─────────────┬────────┬──────────┬───────────┬─────────┐
+│Estado                     │  P(s) previa│  P(U|s)│  Conjunta│  P(s|ind.)│        %│
+├───────────────────────────┼─────────────┼────────┼──────────┼───────────┼─────────┤
+│s1 · Regulación Permisiva  │         0,30│    0,35│    0,1050│     0,1765│   17,65%│
+│s2 · Regulación Estricta   │         0,70│    0,70│    0,4900│     0,8235│   82,35%│
+│Total                      │         1,00│       —│    0,5950│     1,0000│  100,00%│
+└───────────────────────────┴─────────────┴────────┴──────────┴───────────┴─────────┘
+  Valores esperados revisados con estas probabilidades:
+      EV(d1|U) = 0,1765·(1.400) + 0,8235·(300) = 494,12
+      EV(d2|U) = 0,1765·(950) + 0,8235·(700) = 744,12  ◄ ÓPTIMA
+  Si el estudio resulta Desfavorable, la decisión se RATIFICA en d2 · Mantener la ruta con
+  744.117,65 COP.
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════ PASO 10: ÁRBOLES DE DECISIÓN ═══════════════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Se construyen dos árboles: el de la decisión inicial (sin estudio) y el de la decisión
+  condicionada al resultado del estudio. Los nodos cuadrados son decisiones (controla la empresa)
+  y los circulares son nodos de azar (controla el entorno regulatorio). La resolución es por
+  inducción hacia atrás: se promedia en los nodos de azar y se optimiza en los nodos de decisión.
+
+  • Árbol sin información muestral   → valor en la raíz: 775.000 COP
+  • Árbol con información muestral   → valor en la raíz: 778.750 COP
+
+  Archivos generados: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION
+  OPERACIONES/EMPRESA/04_arbol_prior.png y /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION
+  OPERACIONES/EMPRESA/05_arbol_muestral.png
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+═════════════════════════ PASO 11: VALOR DE LA INFORMACIÓN MUESTRAL (EVSI) ═════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+┌───────────────────────┬──────────────┬────────────────────────┬────────────────┬──────────────────┐
+│Resultado del estudio  │P(resultado)  │Decisión óptima         │  Valor esperado│  Aporte ponderado│
+├───────────────────────┼──────────────┼────────────────────────┼────────────────┼──────────────────┤
+│F · Favorable          │0,4050        │d1 · Invertir en flota  │          829,63│            336,00│
+│U · Desfavorable       │0,5950        │d2 · Mantener la ruta   │          744,12│            442,75│
+└───────────────────────┴──────────────┴────────────────────────┴────────────────┴──────────────────┘
+
+      EVcIM = P(F)·EV*|F = 0,4050·829,63 + P(U)·EV*|U = 0,5950·744,12 = 778,75
+      EVSI = EVcIM − EVsIM = 778,75 − 775,00 = 3,75
+
+┌─────────────────────────────────────────────────────────────┬────────┬─────────────┐
+│Concepto                                                     │   Valor│  Equivalente│
+├─────────────────────────────────────────────────────────────┼────────┼─────────────┤
+│Valor esperado SIN información muestral (decisión a priori)  │  775,00│  775.000 COP│
+│Valor esperado CON información muestral (estudio)            │  778,75│  778.750 COP│
+│EVSI = diferencia entre ambos                                │    3,75│    3.750 COP│
+└─────────────────────────────────────────────────────────────┴────────┴─────────────┘
+
+  Interpretación: contratar la consultoría solo tiene sentido si su honorario es inferior a 3.750
+  COP.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+════════════════════════════ PASO 12: EFICIENCIA DEL ESTUDIO DE MERCADO ════════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+      Eficiencia = EVSI / EVPI = 3,75 / 135,00 = 2,78%
+
+┌──────────────────────────────────────────┬────────┬─────────────┐
+│Concepto                                  │   Valor│  Equivalente│
+├──────────────────────────────────────────┼────────┼─────────────┤
+│EVSI — información muestral (imperfecta)  │    3,75│    3.750 COP│
+│EVPI — información perfecta               │  135,00│  135.000 COP│
+│Eficiencia = EVSI / EVPI                  │   2,78%│     MUY BAJA│
+└──────────────────────────────────────────┴────────┴─────────────┘
+
+      Eficiencia: [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 2,78%
+
+  Una eficiencia del 2,78% significa que el estudio solo captura esa fracción del beneficio que
+  aportaría saber con certeza el estado regulatorio. La calificación es MUY BAJA, por lo que NO se
+  recomienda contratarlo.
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+════════════════════════ PASO 13: DECISIÓN FINAL DEL TOMADOR DE DECISIONES ═════════════════════════
+════════════════════════════════════════════════════════════════════════════════════════════════════
+╔══════════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                       CONCLUSIÓN GERENCIAL                                       ║
+║ ──────────────────────────────────────────────────────────────────────────────────────────────── ║
+║  1. DECISIÓN OPERATIVA INICIAL (sin estudio). Se elige la alternativa d2 — Mantener la ruta —    ║
+║  porque alcanza el mejor valor esperado: EV(d1) = 630.000 COP; EV(d2) = 775.000 COP. Con una     ║
+║  probabilidad de 70% de Regulación Estricta, esta opción protege a la empresa del riesgo         ║
+║  financiero de operar bajo un escenario regulatorio adverso.                                     ║
+║  2. ESTABILIDAD DE LA DECISIÓN. El análisis de sensibilidad muestra que P(s1) tendría que        ║
+║  superar el umbral de 47,06% (p = 0,4706) para que la decisión óptima pasara a ser d1 —          ║
+║  Invertir en flota. Como el valor estimado actual es 30%, la decisión d2 se mantiene con         ║
+║  holgura (17,06 puntos porcentuales de margen).                                                  ║
+║  3. INFORMACIÓN PERFECTA. Conocer con certeza el estado regulatorio valdría como máximo 135.000  ║
+║  COP (EVPI), diferencia entre el valor esperado con información perfecta (910.000 COP) y el      ║
+║  valor esperado de la decisión actual (775.000 COP). Ningún estudio, por bueno que sea, puede    ║
+║  costar más que esta cifra.                                                                      ║
+║  4. DECISIÓN CONDICIONADA AL ESTUDIO (Bayes). Si el resultado es Favorable, P(s1) pasa a 48,15%  ║
+║  y la decisión cambia a d1 — Invertir en flota — con 829.629,63 COP. Si el resultado es          ║
+║  Desfavorable, P(s1) pasa a 17,65% y la decisión se ratifica en d2 — Mantener la ruta — con      ║
+║  744.117,65 COP.                                                                                 ║
+║  5. CONCLUSIÓN GERENCIAL Y FINANCIERA. El estudio aporta un incremento esperado (EVSI) de 3.750  ║
+║  COP, equivalente a una eficiencia muy baja de 2,78% frente a la información perfecta. Por lo    ║
+║  tanto, no se justifica contratar la consultoría externa: cualquier honorario superior a 3.750   ║
+║  COP destruiría valor. La recomendación final al tomador de decisiones es adoptar d2 — Mantener  ║
+║  la ruta — con una utilidad esperada de 775.000 COP sin incurrir en gastos adicionales de        ║
+║  estudio.                                                                                        ║
+║  Observación: aunque un resultado favorable del estudio llegaría a cambiar la decisión hacia     ║
+║  d1, la probabilidad de ese escenario y la ganancia asociada son demasiado pequeñas para         ║
+║  compensar el costo de obtener esa información.                                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────┬───────────────────────┐
+│Indicador                        │              Resultado│
+├─────────────────────────────────┼───────────────────────┤
+│Alternativa óptima (a priori)    │  d2 · Mantener la ruta│
+│Valor esperado óptimo            │            775.000 COP│
+│Criterio optimista               │                     d1│
+│Criterio conservador             │                     d2│
+│Criterio mínimo arrepentimiento  │                     d1│
+│Punto de corte                   │                 47,06%│
+│EVPI                             │            135.000 COP│
+│EVSI                             │              3.750 COP│
+│Eficiencia del estudio           │       2,78% (muy baja)│
+│¿Contratar el estudio?           │                     NO│
+└─────────────────────────────────┴───────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                        ARCHIVOS DE SALIDA                                        │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────── │
+│  Figuras generadas automáticamente:                                                              │
+│  • contexto: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                               │
+│  OPERACIONES/EMPRESA/01_contexto.png                                                             │
+│  • matriz: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                                 │
+│  OPERACIONES/EMPRESA/02_matriz_criterios.png                                                     │
+│  • sensibilidad: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                           │
+│  OPERACIONES/EMPRESA/03_sensibilidad.png                                                         │
+│  • arbol_prior: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                            │
+│  OPERACIONES/EMPRESA/04_arbol_prior.png                                                          │
+│  • arbol_muestral: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                         │
+│  OPERACIONES/EMPRESA/05_arbol_muestral.png                                                       │
+│  • bayes: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                                  │
+│  OPERACIONES/EMPRESA/06_bayes.png                                                                │
+│  • resumen: /home/danithy/Documents/OCTAVO SEMESTRE/INVESTIGACION                                │
+│  OPERACIONES/EMPRESA/07_resumen.png                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘

@@ -1,0 +1,18 @@
+# Entorno virtual de Python
+venv/
+.venv/
+
+# Archivos de caché
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de salida e imágenes
+salida/
+*.png
+
+# Logs y configuración
+*.log
+.env
+.vscode/
