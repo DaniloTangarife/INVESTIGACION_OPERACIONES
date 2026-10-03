@@ -3,14 +3,17 @@
 =====================================================================
  PROGRAMA PRINCIPAL
 =====================================================================
-Ejecuta los 13 pasos del proyecto de Investigación de Operaciones y
-genera las figuras. Todo se deriva de config.py.
+Ejecuta los 13 pasos del proyecto de Investigación de Operaciones,
+la parte de Teoría de Juegos y la de Teoría de Colas, y genera las
+figuras. Todo se deriva de config.py, config_Juegos.py y config_colas.py.
 
 Uso:
     python main.py                 → reporte completo + figuras
     python main.py --sin-graficas  → solo el reporte de consola
     python main.py --p 0.55        → recalcula todo con P(s1) = 0.55
     python main.py --exportar      → guarda el reporte en un .txt
+    python main.py --solo-decisiones → solo la parte de decisiones
+    python main.py --solo-juegos     → solo la parte de teoría de juegos
 =====================================================================
 """
 from __future__ import annotations
@@ -21,17 +24,20 @@ import sys
 
 import config as CFG
 import config_Juegos as CJ
+import config_colas as CC
 from juegos import JuegoSumaCero
 from modelo import ModeloDecision, dinero, num, pct
+from colas import ModeloColas
 import reporte as R
 import reporte_Juegos as RJ
-
+import reporte_colas as RC
 
 ESCENARIOS_SENSIBILIDAD = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 
 def construir_reporte(m: ModeloDecision, archivos: dict,
-                      juego: JuegoSumaCero | None = None) -> str:
+                      juego: JuegoSumaCero | None = None,
+                      colas: ModeloColas | None = None) -> str:
     bloques = [
         R.portada(m),
         R.paso1(m),
@@ -53,6 +59,8 @@ def construir_reporte(m: ModeloDecision, archivos: dict,
     ]
     if juego is not None:
         bloques.append(RJ.reporte_juego(juego, archivos))
+    if colas is not None:
+        bloques.append(RC.reporte_colas(colas, archivos))
     if archivos:
         listado = ["Figuras generadas automáticamente:"] + \
                   [f"• {k}: {v}" for k, v in archivos.items() if v]
@@ -71,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--exportar", action="store_true",
                     help="guarda el reporte completo en un archivo de texto")
     ap.add_argument("--solo-decisiones", action="store_true",
-                    help="omite la parte de teoría de juegos")
+                    help="omite la parte de teoría de juegos y de colas")
     ap.add_argument("--solo-juegos", action="store_true",
                     help="muestra únicamente la parte de teoría de juegos")
     args = ap.parse_args(argv)
@@ -87,18 +95,30 @@ def main(argv: list[str] | None = None) -> int:
         for e in libres:
             e["prior"] = resto / len(libres) if base == 0 else e["prior"] / base * resto
 
+    # --- Modelo de decisiones ---
     try:
         modelo = ModeloDecision(CFG)
     except ValueError as err:
         print(f"\n❌ {err}\n"); return 1
 
+    # --- Modelo de teoría de juegos ---
     juego = None
-    if not args.solo_decisiones:
+    if not args.solo_decisiones and not args.solo_juegos:
         try:
             juego = JuegoSumaCero(CJ)
         except ValueError as err:
             print(f"\n❌ {err}\n"); return 1
 
+    # --- Modelo de teoría de colas ---
+    colas = None
+    if not args.solo_decisiones and not args.solo_juegos:
+        try:
+            colas = ModeloColas(CC)
+        except ValueError as err:
+            print(f"\n❌ Error en el modelo de colas:\n{err}\n")
+            colas = None
+
+    # --- Generación de figuras ---
     archivos: dict[str, str] = {}
     if not args.sin_graficas:
         import graficas
@@ -106,11 +126,15 @@ def main(argv: list[str] | None = None) -> int:
         if juego is not None:
             import graficas_Juegos
             archivos.update(graficas_Juegos.generar_todas_juego(juego, args.salida))
+        if colas is not None:
+            import graficas_colas
+            archivos.update(graficas_colas.generar_todas_colas(colas, args.salida))
 
+    # --- Generación del reporte ---
     if args.solo_juegos and juego is not None:
         texto = RJ.reporte_juego(juego, archivos)
     else:
-        texto = construir_reporte(modelo, archivos, juego)
+        texto = construir_reporte(modelo, archivos, juego, colas)
     print(texto)
 
     for aviso in modelo.avisos + (juego.avisos if juego else []):

@@ -4,8 +4,8 @@
  TABLERO GRÁFICO DEL ESTUDIO
 =====================================================================
 Convierte el reporte de consola en una aplicación visual que se abre
-en el navegador: navegación lateral por los 13 pasos, tarjetas,
-tablas, indicadores y todas las figuras embebidas.
+en el navegador: navegación lateral por los pasos del estudio,
+tarjetas, tablas, indicadores y todas las figuras embebidas.
 
 Los datos del problema son editables desde la propia interfaz: al
 pulsar «Recalcular», el modelo se rehace y todo el tablero se
@@ -37,10 +37,13 @@ from types import SimpleNamespace
 
 import config as CFG
 import config_Juegos as CJ
+import config_colas as CC
 import graficas
 import graficas_Juegos
+import graficas_colas
 from juegos import JuegoSumaCero
 from modelo import ModeloDecision, dinero, num, pct
+from colas import ModeloColas
 
 
 # =====================================================================
@@ -88,6 +91,27 @@ def datos_juego_editables(base=CJ) -> SimpleNamespace:
         MATRIZ_JUEGO=copy.deepcopy(base.MATRIZ_JUEGO),
         UNIDAD_JUEGO=base.UNIDAD_JUEGO,
         FACTOR_PROBABILIDAD=base.FACTOR_PROBABILIDAD,
+    )
+
+
+def datos_colas_editables(base=CC) -> SimpleNamespace:
+    """Copia editable de config_colas.py; el archivo original no se toca."""
+    return SimpleNamespace(
+        TITULO_COLAS=base.TITULO_COLAS,
+        SUBTITULO_COLAS=base.SUBTITULO_COLAS,
+        CONTEXTO_COLAS=base.CONTEXTO_COLAS,
+        VENTAS_MIN_DIA=base.VENTAS_MIN_DIA,
+        VENTAS_MAX_DIA=base.VENTAS_MAX_DIA,
+        PRECIOS_PASAJE=list(base.PRECIOS_PASAJE),
+        BUSES_POR_DIA=base.BUSES_POR_DIA,
+        HORAS_OPERACION=base.HORAS_OPERACION,
+        TIEMPO_SERVICIO_ACTUAL=base.TIEMPO_SERVICIO_ACTUAL,
+        MEJORA_DESCRIPCION=base.MEJORA_DESCRIPCION,
+        MEJORA_JUSTIFICACION=base.MEJORA_JUSTIFICACION,
+        FACTOR_MEJORA=base.FACTOR_MEJORA,
+        UNIDAD_TIEMPO=base.UNIDAD_TIEMPO,
+        UNIDAD_TASA=base.UNIDAD_TASA,
+        N_PN=base.N_PN,
     )
 
 
@@ -164,6 +188,11 @@ SECCIONES = [
     ("jt4", "J4 · Solución algebraica", "J4"),
     ("jt5", "J5 · Análisis gráfico", "J5"),
     ("jt6", "J6 · Estrategias y valor del juego", "J6"),
+    ("colas_contexto", "Colas · Contexto", "⏳"),
+    ("colas_datos", "Colas · Datos", "⚙"),
+    ("colas_actual", "Colas · 14 · Cálculo actual", "14"),
+    ("colas_mejora", "Colas · 15 · Mejora", "15"),
+    ("colas_comparacion", "Colas · 16 · Comparación", "16"),
 ]
 
 
@@ -171,10 +200,12 @@ class Tablero:
     """Genera el HTML completo del estudio a partir del modelo."""
 
     def __init__(self, modelo: ModeloDecision, juego: JuegoSumaCero,
-                 interactivo: bool = True):
+                 modelo_colas: ModeloColas, interactivo: bool = True):
         self.m = modelo
         self.d = modelo.cfg
         self.j = juego
+        self.mc = modelo_colas
+        self.dc = modelo_colas.cfg
         self.interactivo = interactivo
 
     # -----------------------------------------------------------------
@@ -186,17 +217,20 @@ class Tablero:
             self.sec13(),
             self.jsec_contexto(), self.jsec1(), self.jsec2(), self.jsec3(),
             self.jsec4(), self.jsec5(), self.jsec6(),
+            self.csec_contexto(), self.csec_datos(), self.csec_actual(),
+            self.csec_mejora(), self.csec_comparacion(),
         ])
         m = self.m
+        mc = self.mc
         nav = "".join(
             f'<a class="nav-it" data-ir="{k}"><span class="nav-ic">{esc(ic)}</span>'
             f'<span>{esc(t)}</span></a>' for k, t, ic in SECCIONES)
         resumen = (f'Óptima: <b>{esc(m.alt_optima_prior)}</b> · '
                    f'{esc(dinero(m.ev_optimo_prior))} &nbsp;|&nbsp; '
-                   f'Corte: <b>{esc(pct(m.umbral_decisorio.p)) if m.umbral_decisorio else "—"}</b>'
-                   f' &nbsp;|&nbsp; Eficiencia: <b>{esc(pct(m.eficiencia))}</b>'
-                   f' &nbsp;|&nbsp; Valor del juego: '
-                   f'<b>{esc(num(self.j.valor_juego, 2))}</b>')
+                   f'Eficiencia: <b>{esc(pct(m.eficiencia))}</b>'
+                   f' &nbsp;|&nbsp; Juego: <b>{esc(num(self.j.valor_juego, 2))}</b>'
+                   f' &nbsp;|&nbsp; Colas ρ: <b>{esc(pct(mc.actual.rho))}</b> → '
+                   f'<b>{esc(pct(mc.mejorado.rho))}</b>')
         return PLANTILLA.format(
             titulo=esc(self.d.TITULO), subtitulo=esc(self.d.SUBTITULO),
             curso=esc(self.d.CURSO), nav=nav, secciones=secciones,
@@ -236,6 +270,7 @@ class Tablero:
             "Calcular cuánto valdría eliminar por completo la incertidumbre (EVPI).",
             "Evaluar, con el Teorema de Bayes, si una consultoría jurídica previa "
             "cambiaría la decisión (EVSI).",
+            "Analizar el sistema de colas de la venta de tiquetes (M/M/1).",
             "Concluir con cifras si conviene o no pagar esa consultoría."])
         c3 = tarjeta("¿Qué se busca con este estudio?", f"<ol>{objetivos}</ol>", "verde")
 
@@ -327,6 +362,27 @@ class Tablero:
         enc_juego = "".join(f"<th>{esc(c)} · {esc(j.nombre_c[c])}</th>"
                             for c in j.ids_c)
 
+        dc = self.dc
+        formulario_colas = (
+            f'<h4>Teoría de colas — datos operativos</h4>'
+            f'<div class="tabla-env"><table><tbody>'
+            f'<tr><td class="izq">Ventas mínimas por día (COP)</td>'
+            f'<td><input name="col_ventas_min" value="{dc.VENTAS_MIN_DIA}" '
+            f'inputmode="decimal"></td></tr>'
+            f'<tr><td class="izq">Ventas máximas por día (COP)</td>'
+            f'<td><input name="col_ventas_max" value="{dc.VENTAS_MAX_DIA}" '
+            f'inputmode="decimal"></td></tr>'
+            f'<tr><td class="izq">Horas de operación al día</td>'
+            f'<td><input name="col_horas" value="{dc.HORAS_OPERACION}" '
+            f'inputmode="decimal"></td></tr>'
+            f'<tr><td class="izq">Tiempo de servicio actual (s)</td>'
+            f'<td><input name="col_tiempo" value="{dc.TIEMPO_SERVICIO_ACTUAL}" '
+            f'inputmode="decimal"></td></tr>'
+            f'<tr><td class="izq">Factor de mejora (0–1)</td>'
+            f'<td><input name="col_factor" value="{dc.FACTOR_MEJORA}" '
+            f'inputmode="decimal"></td></tr>'
+            f'</tbody></table></div>')
+
         formulario = (
             f'<form method="post" action="/recalcular" id="frm">'
             f'<h4>Matriz de pagos ({esc(self.d.UNIDAD_CORTA)})</h4>'
@@ -343,6 +399,7 @@ class Tablero:
             f'<div class="tabla-env"><table><thead><tr>'
             f'<th class="izq">Jugador I \\ II</th>{enc_juego}</tr></thead>'
             f'<tbody>{f_juego}</tbody></table></div>'
+            f'{formulario_colas}'
             f'<div class="acciones">'
             f'<button class="btn verde" type="submit">↻ Recalcular todo el estudio</button>'
             f'<button class="btn gris" type="submit" formaction="/restaurar">'
@@ -353,8 +410,8 @@ class Tablero:
         cuerpo = tarjeta(
             "Datos del problema — editables en vivo",
             parrafo("Toda la aplicación se alimenta únicamente de estos valores. "
-                    "Al recalcular, los 13 pasos, las gráficas, los árboles y los "
-                    "textos de conclusión se rehacen automáticamente.", "suave")
+                    "Al recalcular, los pasos del estudio, las gráficas, los árboles "
+                    "y los textos de conclusión se rehacen automáticamente.", "suave")
             + formulario, "ambar")
         return self._envolver("datos", "Datos del problema", cuerpo)
 
@@ -954,6 +1011,154 @@ class Tablero:
         c += tarjeta("", figura(graficas_Juegos.figura_resumen_juego(j, None)), "verde")
         return self._envolver("jt6", "Juegos · Paso 6 — Estrategias y valor del juego", c)
 
+
+    # =================================================================
+    #  SECCIONES DE TEORÍA DE COLAS
+    # =================================================================
+    def csec_contexto(self) -> str:
+        mc = self.mc
+        dc = self.dc
+        portada = (f'<div class="portada"><h1>{esc(dc.TITULO_COLAS)}</h1>'
+                   f'<p class="sub">{esc(dc.SUBTITULO_COLAS)}</p>'
+                   f'<p class="meta">Tercera parte del estudio · análisis del '
+                   f'sistema de colas M/M/1</p></div>')
+
+        c = tarjeta("¿Por qué un tercer modelo?",
+                    parrafo(dc.CONTEXTO_COLAS), "azul")
+
+        c += tarjeta("¿Cómo se calculan λ y μ?",
+                     parrafo("A partir de los datos operativos reales de la empresa, "
+                             "no de supuestos académicos:", "suave")
+                     + formula(mc.actual.desarrollo["lambda"])
+                     + formula(mc.actual.desarrollo["mu"])
+                     + formula(mc.actual.desarrollo["rho"]), "morado")
+
+        c += tarjeta("Mejora propuesta (sin contratar personal)",
+                     parrafo(dc.MEJORA_DESCRIPCION)
+                     + parrafo("Justificación:", "suave")
+                     + parrafo(dc.MEJORA_JUSTIFICACION, "suave")
+                     + parrafo(f"Con esta mejora, el tiempo de servicio baja de "
+                               f"{num(mc.actual.tiempo_servicio, 0)} a "
+                               f"{num(mc.mejorado.tiempo_servicio, 0)} segundos, "
+                               f"elevando μ de {num(mc.actual.mu, 4)} a "
+                               f"{num(mc.mejorado.mu, 4)} clientes/hora.",
+                               "ok"), "verde")
+        return self._envolver("colas_contexto", "Colas · Contexto", portada + c)
+
+    def csec_datos(self) -> str:
+        dc = self.dc
+        mc = self.mc
+        cuerpo = tarjeta("Datos operativos del sistema",
+                         tabla(["Parámetro", "Valor"], [
+                             ["Ventas mínimas por día",
+                              f"{dc.VENTAS_MIN_DIA:,.0f} COP".replace(",", ".")],
+                             ["Ventas máximas por día",
+                              f"{dc.VENTAS_MAX_DIA:,.0f} COP".replace(",", ".")],
+                             ["Precios de pasaje",
+                              " · ".join(f"{p:,.0f}".replace(",", ".")
+                                         for p in dc.PRECIOS_PASAJE) + " COP"],
+                             ["Buses por día", str(dc.BUSES_POR_DIA)],
+                             ["Horas de operación",
+                              f"{dc.HORAS_OPERACION} horas"],
+                             ["Tiempo de servicio actual",
+                              f"{dc.TIEMPO_SERVICIO_ACTUAL} segundos"],
+                             ["Factor de mejora", str(dc.FACTOR_MEJORA)],
+                         ]), "ambar")
+        cuerpo += tarjeta("Datos calculados actualmente",
+                          formula(mc.actual.desarrollo["lambda"])
+                          + formula(mc.actual.desarrollo["mu"]), "morado")
+        return self._envolver("colas_datos", "Colas · Datos", cuerpo)
+
+    def csec_actual(self) -> str:
+        m = self.mc.actual
+        mc = self.mc
+        c = tarjeta("Cálculo de los 7 pasos — Sistema actual",
+                    parrafo(f"λ = {num(m.lambda_, 4)} clientes/hora   ·   "
+                            f"μ = {num(m.mu, 4)} clientes/hora   ·   "
+                            f"ρ = {pct(m.rho)}", "ok")
+                    + parrafo(f"Sistema M/M/1 con un único servidor (vendedor). "
+                              f"Buses por día: {mc.cfg.BUSES_POR_DIA}.", "suave")
+                    + formula(m.desarrollo["p0"])
+                    + formula(m.desarrollo["lq"])
+                    + formula(m.desarrollo["l"])
+                    + formula(m.desarrollo["wq"])
+                    + formula(m.desarrollo["w"])
+                    + formula(m.desarrollo["pw"]), "azul")
+        filas = [[n, num(m.pn[n], 6), pct(m.pn[n])] for n in sorted(m.pn.keys())]
+        c += tarjeta("7. Pn — Probabilidad de n clientes en el sistema",
+                     tabla(["n", "P(n)", "%"], filas), "morado")
+        c += tarjeta("", figura(graficas_colas.figura_flujo(mc, None)), "azul")
+        return self._envolver("colas_actual", "Colas · 14 · Cálculo actual", c)
+
+    def csec_mejora(self) -> str:
+        m = self.mc.mejorado
+        mc = self.mc
+        dc = self.dc
+        c = tarjeta("Mejora propuesta",
+                    parrafo(dc.MEJORA_DESCRIPCION)
+                    + parrafo("Justificación:", "suave")
+                    + parrafo(dc.MEJORA_JUSTIFICACION, "suave")
+                    + parrafo(f"Tiempo de servicio: "
+                              f"{num(dc.TIEMPO_SERVICIO_ACTUAL, 0)} s → "
+                              f"{num(m.tiempo_servicio, 0)} s      "
+                              f"μ: {num(mc.actual.mu, 4)} → {num(m.mu, 4)} "
+                              f"clientes/hora", "ok"), "verde")
+        c += tarjeta("Cálculo de los 7 pasos — Sistema mejorado",
+                     parrafo(f"λ = {num(m.lambda_, 4)} clientes/hora   ·   "
+                             f"μ = {num(m.mu, 4)} clientes/hora   ·   "
+                             f"ρ = {pct(m.rho)}", "ok")
+                     + formula(m.desarrollo["p0"])
+                     + formula(m.desarrollo["lq"])
+                     + formula(m.desarrollo["l"])
+                     + formula(m.desarrollo["wq"])
+                     + formula(m.desarrollo["w"])
+                     + formula(m.desarrollo["pw"]), "azul")
+        filas = [[n, num(m.pn[n], 6), pct(m.pn[n])] for n in sorted(m.pn.keys())]
+        c += tarjeta("7. Pn — Probabilidad de n clientes en el sistema",
+                     tabla(["n", "P(n)", "%"], filas), "morado")
+        return self._envolver("colas_mejora", "Colas · 15 · Mejora", c)
+
+    def csec_comparacion(self) -> str:
+        a = self.mc.actual
+        b = self.mc.mejorado
+        mc = self.mc
+        filas = [
+            ["λ (clientes/hora)", num(a.lambda_, 4), num(b.lambda_, 4), "—"],
+            ["μ (clientes/hora)", num(a.mu, 4), num(b.mu, 4),
+             f"+{num(b.mu - a.mu, 4)}"],
+            ["Tiempo servicio (s)", num(a.tiempo_servicio, 0),
+             num(b.tiempo_servicio, 0),
+             f"−{num(a.tiempo_servicio - b.tiempo_servicio, 0)}"],
+            ["ρ (utilización)", pct(a.rho), pct(b.rho),
+             f"−{pct(a.rho - b.rho)}"],
+            ["P0 (sistema vacío)", pct(a.p0), pct(b.p0),
+             f"+{pct(b.p0 - a.p0)}"],
+            ["Lq (clientes en cola)", num(a.lq, 4), num(b.lq, 4),
+             f"−{num(mc.mejora_lq, 2)}%"],
+            ["L (clientes en sistema)", num(a.l, 4), num(b.l, 4),
+             f"−{num(mc.mejora_l, 2)}%"],
+            ["Wq (min en cola)", num(a.wq * 60, 2), num(b.wq * 60, 2),
+             f"−{num(mc.mejora_wq, 2)}%"],
+            ["W (min en sistema)", num(a.w * 60, 2), num(b.w * 60, 2),
+             f"−{num(mc.mejora_w, 2)}%"],
+            ["Pw (prob. de esperar)", pct(a.pw), pct(b.pw),
+             f"−{pct(a.pw - b.pw)}"],
+        ]
+        c = tarjeta("Comparación: sistema actual vs. mejorado",
+                    tabla(["Indicador", "Actual", "Mejorado", "Cambio"],
+                          filas), "morado")
+        c += tarjeta("", figura(graficas_colas.figura_comparacion(mc, None)), "azul")
+        c += tarjeta("", figura(graficas_colas.figura_pn(mc, None)), "verde")
+        c += tarjeta("", figura(graficas_colas.figura_resumen_colas(mc, None)),
+                     "verde")
+        colores = ["azul", "morado", "verde", "ambar", "rojo"]
+        for k, texto in enumerate(mc.texto_conclusion()):
+            titulo, _, cuerpo = texto.partition(". ")
+            c += tarjeta(titulo if len(titulo) < 70 else "",
+                         parrafo(cuerpo or texto), colores[k % len(colores)])
+        return self._envolver("colas_comparacion", "Colas · 16 · Comparación", c)
+
+
     # -----------------------------------------------------------------
     def _envolver(self, clave: str, titulo: str, cuerpo: str) -> str:
         return (f'<div class="seccion" id="{esc(clave)}">'
@@ -1123,7 +1328,7 @@ PLANTILLA = """<!DOCTYPE html>
 <title>{titulo}</title><style>{css}</style></head><body>
 <aside>
   <div class="marca"><h1>INVESTIGACIÓN<br>DE OPERACIONES</h1>
-  <p>Decisiones bajo incertidumbre e información muestral</p></div>
+  <p>Decisiones · Juegos · Colas</p></div>
   <nav>{nav}</nav>
 </aside>
 <main>
@@ -1141,19 +1346,34 @@ PLANTILLA = """<!DOCTYPE html>
 #  SERVIDOR
 # =====================================================================
 class Estado:
-    """Mantiene los datos y el modelo vivos entre peticiones."""
+    """Mantiene los datos y los modelos vivos entre peticiones."""
 
     def __init__(self):
         self.datos = datos_editables()
         self.modelo = ModeloDecision(self.datos)
         self.datos_juego = datos_juego_editables()
         self.juego = JuegoSumaCero(self.datos_juego)
+        self.datos_colas = datos_colas_editables()
+        self.modelo_colas = ModeloColas(self.datos_colas)
         self.mensaje = ""
 
     def recalcular(self, campos: dict) -> None:
         d, m, jd, j = self.datos, self.modelo, self.datos_juego, self.juego
+        dc = self.datos_colas
         for clave, valor in campos.items():
             valor = valor.strip().replace(",", ".")
+            if clave.startswith("col_"):
+                if clave == "col_ventas_min":
+                    dc.VENTAS_MIN_DIA = float(valor)
+                elif clave == "col_ventas_max":
+                    dc.VENTAS_MAX_DIA = float(valor)
+                elif clave == "col_horas":
+                    dc.HORAS_OPERACION = float(valor)
+                elif clave == "col_tiempo":
+                    dc.TIEMPO_SERVICIO_ACTUAL = float(valor)
+                elif clave == "col_factor":
+                    dc.FACTOR_MEJORA = float(valor)
+                continue
             if clave.startswith("pago_"):
                 _, a, s = clave.split("_", 2)
                 d.MATRIZ_PAGOS[m.ids_alt.index(a)][m.ids_est.index(s)] = float(valor)
@@ -1168,12 +1388,15 @@ class Estado:
                 jd.MATRIZ_JUEGO[j.ids_f.index(f)][j.ids_c.index(c)] = float(valor)
         self.modelo = ModeloDecision(d)
         self.juego = JuegoSumaCero(jd)
+        self.modelo_colas = ModeloColas(dc)
 
     def restaurar(self) -> None:
         self.datos = datos_editables()
         self.modelo = ModeloDecision(self.datos)
         self.datos_juego = datos_juego_editables()
         self.juego = JuegoSumaCero(self.datos_juego)
+        self.datos_colas = datos_colas_editables()
+        self.modelo_colas = ModeloColas(self.datos_colas)
 
 
 ESTADO = Estado()
@@ -1209,7 +1432,8 @@ class Manejador(BaseHTTPRequestHandler):
     def do_GET(self):
         ruta = urllib.parse.urlparse(self.path).path
         if ruta in ("/", "/index.html"):
-            self._enviar(Tablero(ESTADO.modelo, ESTADO.juego).html().encode("utf-8"))
+            self._enviar(Tablero(ESTADO.modelo, ESTADO.juego,
+                                 ESTADO.modelo_colas).html().encode("utf-8"))
         elif ruta == "/exportar":
             try:
                 carpeta = os.path.abspath(ESTADO.datos.CARPETA_SALIDA)
@@ -1217,13 +1441,17 @@ class Manejador(BaseHTTPRequestHandler):
                 archivos = graficas.generar_todas(ESTADO.modelo, carpeta)
                 archivos.update(graficas_Juegos.generar_todas_juego(
                     ESTADO.juego, carpeta))
+                archivos.update(graficas_colas.generar_todas_colas(
+                    ESTADO.modelo_colas, carpeta))
                 with open(os.path.join(carpeta, "reporte.txt"), "w",
                           encoding="utf-8") as fh:
                     fh.write(prog.construir_reporte(ESTADO.modelo, archivos,
-                                                    ESTADO.juego))
+                                                    ESTADO.juego,
+                                                    ESTADO.modelo_colas))
                 with open(os.path.join(carpeta, "tablero.html"), "w",
                           encoding="utf-8") as fh:
                     fh.write(Tablero(ESTADO.modelo, ESTADO.juego,
+                                     ESTADO.modelo_colas,
                                      interactivo=False).html())
                 cuerpo = tarjeta(
                     "Exportación completada",
@@ -1286,8 +1514,10 @@ def main() -> int:
     if args.html:
         modelo = ModeloDecision(datos_editables())
         juego = JuegoSumaCero(datos_juego_editables())
+        modelo_colas = ModeloColas(datos_colas_editables())
         with open(args.salida, "w", encoding="utf-8") as fh:
-            fh.write(Tablero(modelo, juego, interactivo=False).html())
+            fh.write(Tablero(modelo, juego, modelo_colas,
+                             interactivo=False).html())
         print(f"✔ Tablero generado: {os.path.abspath(args.salida)}")
         return 0
 

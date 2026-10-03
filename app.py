@@ -3,11 +3,11 @@
 =====================================================================
  INTERFAZ GRÁFICA — Presentación del estudio paso a paso
 =====================================================================
-Aplicación de escritorio (Tkinter + Matplotlib) que presenta los 13
+Aplicación de escritorio (Tkinter + Matplotlib) que presenta los
 pasos del proyecto en un entorno visual navegable, con los datos del
-problema editables en vivo: al cambiar la matriz de pagos o las
-probabilidades, todo el estudio se recalcula y todas las pantallas se
-redibujan.
+problema editables en vivo: al cambiar la matriz de pagos, las
+probabilidades o los datos de colas, todo el estudio se recalcula y
+todas las pantallas se redibujan.
 
 Ejecutar:  python app.py
 =====================================================================
@@ -25,6 +25,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import config as CFG
 import graficas
 from modelo import ModeloDecision, dinero, num, pct
+
+import config_colas as CC
+from colas import ModeloColas
+import graficas_colas
 
 
 # =====================================================================
@@ -65,6 +69,11 @@ PASOS = [
     (11, "Valor de la información (EVSI)",     "11"),
     (12, "Eficiencia del estudio",             "12"),
     (13, "Decisión final",                     "13"),
+    ("colas_contexto", "Colas · Contexto", "⏳"),
+    ("colas_datos",    "Colas · Datos",    "⚙"),
+    (14, "Colas · Cálculo actual",   "14"),
+    (15, "Colas · Mejora propuesta", "15"),
+    (16, "Colas · Comparación",      "16"),
 ]
 
 
@@ -204,9 +213,12 @@ class Aplicacion(tk.Tk):
 
         self.datos = self._datos_iniciales()
         self.modelo = ModeloDecision(self.datos)
+        self.datos_colas = self._datos_colas_iniciales()
+        self.modelo_colas = ModeloColas(self.datos_colas)
         self.actual = "contexto"
         self.botones: dict = {}
         self.entradas: dict = {}
+        self.entradas_colas: dict = {}
 
         self._estilos()
         self._construir()
@@ -227,6 +239,26 @@ class Aplicacion(tk.Tk):
             VEROSIMILITUDES=copy.deepcopy(CFG.VEROSIMILITUDES),
             OBJETIVO=CFG.OBJETIVO, CARPETA_SALIDA=CFG.CARPETA_SALIDA,
             ANCHO_CONSOLA=CFG.ANCHO_CONSOLA,
+        )
+
+    def _datos_colas_iniciales(self) -> SimpleNamespace:
+        """Copia editable de config_colas.py (el archivo original nunca se toca)."""
+        return SimpleNamespace(
+            TITULO_COLAS=CC.TITULO_COLAS,
+            SUBTITULO_COLAS=CC.SUBTITULO_COLAS,
+            CONTEXTO_COLAS=CC.CONTEXTO_COLAS,
+            VENTAS_MIN_DIA=CC.VENTAS_MIN_DIA,
+            VENTAS_MAX_DIA=CC.VENTAS_MAX_DIA,
+            PRECIOS_PASAJE=list(CC.PRECIOS_PASAJE),
+            BUSES_POR_DIA=CC.BUSES_POR_DIA,
+            HORAS_OPERACION=CC.HORAS_OPERACION,
+            TIEMPO_SERVICIO_ACTUAL=CC.TIEMPO_SERVICIO_ACTUAL,
+            MEJORA_DESCRIPCION=CC.MEJORA_DESCRIPCION,
+            MEJORA_JUSTIFICACION=CC.MEJORA_JUSTIFICACION,
+            FACTOR_MEJORA=CC.FACTOR_MEJORA,
+            UNIDAD_TIEMPO=CC.UNIDAD_TIEMPO,
+            UNIDAD_TASA=CC.UNIDAD_TASA,
+            N_PN=CC.N_PN,
         )
 
     def _estilos(self) -> None:
@@ -255,7 +287,7 @@ class Aplicacion(tk.Tk):
         tk.Label(cab, text="INVESTIGACIÓN\nDE OPERACIONES", bg=C["azul"], fg="white",
                  font=("DejaVu Sans", 13, "bold"), justify="left").pack(
             anchor="w", padx=20, pady=(20, 4))
-        tk.Label(cab, text="Decisiones bajo incertidumbre\ne información muestral",
+        tk.Label(cab, text="Decisiones · Juegos · Colas",
                  bg=C["azul"], fg="#bfdbfe", font=("DejaVu Sans", 9),
                  justify="left").pack(anchor="w", padx=20, pady=(0, 18))
 
@@ -345,10 +377,11 @@ class Aplicacion(tk.Tk):
         self.titulo_pagina.configure(
             text=titulo if isinstance(clave, str) else f"Paso {clave} — {titulo}")
         m = self.modelo
+        mc = self.modelo_colas
         self.resumen_barra.configure(
             text=f"Óptima: {m.alt_optima_prior} · {dinero(m.ev_optimo_prior)}    |    "
-                 f"Corte: {pct(m.umbral_decisorio.p) if m.umbral_decisorio else '—'}    |    "
-                 f"Eficiencia: {pct(m.eficiencia)}")
+                 f"Eficiencia: {pct(m.eficiencia)}    |    "
+                 f"Colas: ρ = {pct(mc.actual.rho)} → {pct(mc.mejorado.rho)}")
 
         for w in self.area.interior.winfo_children():
             w.destroy()
@@ -360,6 +393,11 @@ class Aplicacion(tk.Tk):
             1: self.pg1, 2: self.pg2, 3: self.pg3, 4: self.pg4, 5: self.pg5,
             6: self.pg6, 7: self.pg7, 8: self.pg8, 9: self.pg9, 10: self.pg10,
             11: self.pg11, 12: self.pg12, 13: self.pg13,
+            "colas_contexto": self.pg_colas_contexto,
+            "colas_datos":    self.pg_colas_datos,
+            14: self.pg_colas_actual,
+            15: self.pg_colas_mejora,
+            16: self.pg_colas_comparacion,
         }[clave]
         constructor(self.area.interior)
         tk.Frame(self.area.interior, bg=C["fondo"], height=18).pack(fill="x")
@@ -402,7 +440,8 @@ class Aplicacion(tk.Tk):
                   "incertidumbre (EVPI).",
                   "4. Evaluar, con el Teorema de Bayes, si una consultoría jurídica "
                   "previa cambiaría la decisión (EVSI).",
-                  "5. Concluir con cifras si conviene o no pagar esa consultoría."]:
+                  "5. Analizar el sistema de colas de la venta de tiquetes (M/M/1).",
+                  "6. Concluir con cifras si conviene o no pagar esa consultoría."]:
             parrafo(i, t, pady=(3, 0))
 
         # Origen de los datos — destacado
@@ -594,9 +633,37 @@ class Aplicacion(tk.Tk):
             f"Eficiencia del estudio: {pct(self.modelo.eficiencia)}")
         self.mostrar("datos")
 
+    def recalcular_colas(self) -> None:
+        try:
+            d = self.datos_colas
+            d.VENTAS_MIN_DIA = float(self.entradas_colas["ventas_min"].get().replace(",", "."))
+            d.VENTAS_MAX_DIA = float(self.entradas_colas["ventas_max"].get().replace(",", "."))
+            d.HORAS_OPERACION = float(self.entradas_colas["horas"].get().replace(",", "."))
+            d.TIEMPO_SERVICIO_ACTUAL = float(
+                self.entradas_colas["tiempo_servicio"].get().replace(",", "."))
+            d.FACTOR_MEJORA = float(self.entradas_colas["factor_mejora"].get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Dato inválido",
+                                 "Todos los campos deben ser numéricos.")
+            return
+        try:
+            self.modelo_colas = ModeloColas(d)
+        except ValueError as err:
+            messagebox.showerror("Datos inconsistentes", str(err))
+            return
+        messagebox.showinfo(
+            "Colas recalculadas",
+            f"λ = {num(self.modelo_colas.actual.lambda_, 4)} clientes/h\n"
+            f"μ actual = {num(self.modelo_colas.actual.mu, 4)} clientes/h\n"
+            f"μ mejorado = {num(self.modelo_colas.mejorado.mu, 4)} clientes/h\n"
+            f"ρ actual = {pct(self.modelo_colas.actual.rho)}")
+        self.mostrar("colas_datos")
+
     def restaurar(self) -> None:
         self.datos = self._datos_iniciales()
         self.modelo = ModeloDecision(self.datos)
+        self.datos_colas = self._datos_colas_iniciales()
+        self.modelo_colas = ModeloColas(self.datos_colas)
         self.mostrar("datos")
 
     # =================================================================
@@ -940,6 +1007,214 @@ class Aplicacion(tk.Tk):
         insertar_figura(p, graficas.figura_resumen(m, None), 1000)
 
     # =================================================================
+    #  PÁGINAS DE TEORÍA DE COLAS
+    # =================================================================
+    def pg_colas_contexto(self, p) -> None:
+        d = self.datos_colas
+        mc = self.modelo_colas
+
+        enc = tk.Frame(p, bg=C["azul"])
+        enc.pack(fill="x", padx=22, pady=(6, 10))
+        tk.Label(enc, text=d.TITULO_COLAS, bg=C["azul"], fg="white", wraplength=980,
+                 font=("DejaVu Sans", 15, "bold"), justify="center").pack(pady=(18, 4))
+        tk.Label(enc, text=d.SUBTITULO_COLAS, bg=C["azul"], fg="#dbeafe",
+                 font=("DejaVu Sans", 10), wraplength=980).pack(pady=(0, 18))
+
+        i = tarjeta(p, "¿QUÉ ES EL SISTEMA DE COLAS?", C["azul"])
+        parrafo(i, d.CONTEXTO_COLAS)
+        parrafo(i, "El sistema se modela como una cola M/M/1: llegadas tipo "
+                   "Poisson, tiempos de servicio exponenciales y un único servidor.",
+                color=C["texto_suave"])
+
+        i = tarjeta(p, "¿CÓMO SE OBTIENEN λ Y μ?", C["morado"])
+        parrafo(i, "A partir de los datos operativos reales de la empresa, "
+                   "no de supuestos académicos:")
+        formula(i, mc.actual.desarrollo["lambda"])
+        formula(i, mc.actual.desarrollo["mu"])
+        formula(i, mc.actual.desarrollo["rho"])
+
+        i = tarjeta(p, "MEJORA PROPUESTA (SIN CONTRATAR PERSONAL)", C["verde"])
+        parrafo(i, d.MEJORA_DESCRIPCION)
+        parrafo(i, "Justificación:")
+        parrafo(i, d.MEJORA_JUSTIFICACION, color=C["texto_suave"])
+        parrafo(i, f"Con esta mejora, el tiempo de servicio baja de "
+                   f"{num(mc.actual.tiempo_servicio, 0)} a "
+                   f"{num(mc.mejorado.tiempo_servicio, 0)} segundos, "
+                   f"elevando μ de {num(mc.actual.mu, 4)} a "
+                   f"{num(mc.mejorado.mu, 4)} clientes/hora.",
+                negrita=True, color=C["verde"])
+
+    def pg_colas_datos(self, p) -> None:
+        d = self.datos_colas
+        mc = self.modelo_colas
+
+        i = tarjeta(p, "DATOS DEL SISTEMA DE COLAS — EDITABLES", C["ambar"])
+        parrafo(i, "Modifica los valores y pulsa «Recalcular colas». Toda la "
+                   "sección de colas (cálculos, gráficas y conclusión) se "
+                   "actualiza automáticamente.",
+                color=C["texto_suave"])
+
+        self.entradas_colas = {}
+
+        # Panel de datos operativos
+        i = tarjeta(p, "Datos operativos", C["azul"])
+        rej = tk.Frame(i, bg=C["panel"])
+        rej.pack(anchor="w")
+
+        campos = [
+            ("Ventas mínimas por día (COP):", "ventas_min", d.VENTAS_MIN_DIA),
+            ("Ventas máximas por día (COP):", "ventas_max", d.VENTAS_MAX_DIA),
+            ("Horas de operación al día:", "horas", d.HORAS_OPERACION),
+            ("Tiempo de servicio actual (s):", "tiempo_servicio",
+             d.TIEMPO_SERVICIO_ACTUAL),
+            ("Factor de mejora (0–1):", "factor_mejora", d.FACTOR_MEJORA),
+        ]
+        for r, (etiqueta, clave, valor) in enumerate(campos):
+            tk.Label(rej, text=etiqueta, bg=C["panel"], anchor="w",
+                     font=("DejaVu Sans", 10)).grid(row=r, column=0, sticky="w",
+                                                    pady=5, padx=(0, 12))
+            var = tk.StringVar(value=str(valor))
+            tk.Entry(rej, textvariable=var, width=14, justify="center",
+                     font=("DejaVu Sans Mono", 11), relief="solid", bd=1).grid(
+                row=r, column=1, padx=10, pady=5, ipady=4)
+            self.entradas_colas[clave] = var
+
+        parrafo(i, "Precios de pasaje usados para el promedio: "
+                   + " · ".join(f"{p:,.0f}".replace(",", ".")
+                                for p in d.PRECIOS_PASAJE) + " COP",
+                color=C["texto_suave"], tam=9)
+
+        # Panel de referencia
+        i = tarjeta(p, "Datos actuales calculados", C["morado"])
+        formula(i, mc.actual.desarrollo["lambda"])
+        formula(i, mc.actual.desarrollo["mu"])
+
+        # Botones
+        i = tarjeta(p, "", C["verde"])
+        botones = tk.Frame(i, bg=C["panel"])
+        botones.pack(anchor="w")
+        tk.Button(botones, text="↻  Recalcular colas",
+                  command=self.recalcular_colas, bg=C["verde"], fg="white",
+                  relief="flat", cursor="hand2", activebackground="#047857",
+                  activeforeground="white", font=("DejaVu Sans", 11, "bold"),
+                  padx=22, pady=10).pack(side="left")
+        tk.Button(botones, text="⟲  Restaurar valores originales",
+                  command=self.restaurar, bg="#e2e8f0", fg=C["texto"],
+                  relief="flat", cursor="hand2", font=("DejaVu Sans", 11),
+                  padx=22, pady=10).pack(side="left", padx=12)
+
+    def pg_colas_actual(self, p) -> None:
+        m = self.modelo_colas.actual
+        mc = self.modelo_colas
+
+        i = tarjeta(p, "CÁLCULO DE LOS 7 PASOS — SISTEMA ACTUAL", C["azul"])
+        parrafo(i, f"λ = {num(m.lambda_, 4)} clientes/hora   ·   "
+                   f"μ = {num(m.mu, 4)} clientes/hora   ·   "
+                   f"ρ = {pct(m.rho)}", negrita=True, color=C["azul"])
+        parrafo(i, f"Sistema M/M/1 con un único servidor (vendedor). "
+                   f"Buses por día: {mc.cfg.BUSES_POR_DIA}.",
+                color=C["texto_suave"])
+
+        pasos = [
+            ("p0", "1. P0 — Probabilidad de que el sistema esté vacío"),
+            ("lq", "2. Lq — Número promedio de clientes en la cola"),
+            ("l",  "3. L  — Número promedio de clientes en el sistema"),
+            ("wq", "4. Wq — Tiempo promedio de espera en la cola"),
+            ("w",  "5. W  — Tiempo promedio en el sistema"),
+            ("pw", "6. Pw — Probabilidad de que un cliente tenga que esperar"),
+        ]
+        for clave, titulo in pasos:
+            i = tarjeta(p, titulo, C["azul"])
+            formula(i, m.desarrollo[clave])
+
+        i = tarjeta(p, "7. Pn — Probabilidad de n clientes en el sistema",
+                    C["morado"])
+        filas = [[n, num(m.pn[n], 6), pct(m.pn[n])]
+                 for n in sorted(m.pn.keys())]
+        tabla(i, ["n", "P(n)", "%"], filas, [80, 180, 180])
+
+        insertar_figura(p, graficas_colas.figura_flujo(self.modelo_colas, None), 900)
+
+    def pg_colas_mejora(self, p) -> None:
+        m = self.modelo_colas.mejorado
+        d = self.datos_colas
+        mc = self.modelo_colas
+
+        i = tarjeta(p, "MEJORA PROPUESTA (SIN CONTRATAR PERSONAL)", C["verde"])
+        parrafo(i, d.MEJORA_DESCRIPCION)
+        parrafo(i, "Justificación:")
+        parrafo(i, d.MEJORA_JUSTIFICACION, color=C["texto_suave"])
+        parrafo(i, f"Tiempo de servicio: {num(d.TIEMPO_SERVICIO_ACTUAL, 0)} s "
+                   f"→ {num(m.tiempo_servicio, 0)} s      "
+                   f"μ: {num(mc.actual.mu, 4)} → {num(m.mu, 4)} clientes/hora",
+                negrita=True, color=C["verde"])
+
+        i = tarjeta(p, "CÁLCULO DE LOS 7 PASOS — SISTEMA MEJORADO", C["azul"])
+        parrafo(i, f"λ = {num(m.lambda_, 4)} clientes/hora   ·   "
+                   f"μ = {num(m.mu, 4)} clientes/hora   ·   "
+                   f"ρ = {pct(m.rho)}", negrita=True, color=C["azul"])
+
+        pasos = [
+            ("p0", "1. P0 — Probabilidad de que el sistema esté vacío"),
+            ("lq", "2. Lq — Número promedio de clientes en la cola"),
+            ("l",  "3. L  — Número promedio de clientes en el sistema"),
+            ("wq", "4. Wq — Tiempo promedio de espera en la cola"),
+            ("w",  "5. W  — Tiempo promedio en el sistema"),
+            ("pw", "6. Pw — Probabilidad de que un cliente tenga que esperar"),
+        ]
+        for clave, titulo in pasos:
+            i = tarjeta(p, titulo, C["verde"])
+            formula(i, m.desarrollo[clave])
+
+        i = tarjeta(p, "7. Pn — Probabilidad de n clientes en el sistema",
+                    C["morado"])
+        filas = [[n, num(m.pn[n], 6), pct(m.pn[n])]
+                 for n in sorted(m.pn.keys())]
+        tabla(i, ["n", "P(n)", "%"], filas, [80, 180, 180])
+
+    def pg_colas_comparacion(self, p) -> None:
+        a = self.modelo_colas.actual
+        b = self.modelo_colas.mejorado
+        mc = self.modelo_colas
+
+        i = tarjeta(p, "COMPARACIÓN: SISTEMA ACTUAL vs. MEJORADO", C["morado"])
+        filas = [
+            ["λ (clientes/hora)", num(a.lambda_, 4), num(b.lambda_, 4), "—"],
+            ["μ (clientes/hora)", num(a.mu, 4), num(b.mu, 4),
+             f"+{num(b.mu - a.mu, 4)}"],
+            ["Tiempo servicio (s)", num(a.tiempo_servicio, 0),
+             num(b.tiempo_servicio, 0),
+             f"−{num(a.tiempo_servicio - b.tiempo_servicio, 0)}"],
+            ["ρ (utilización)", pct(a.rho), pct(b.rho), f"−{pct(a.rho - b.rho)}"],
+            ["P0 (sistema vacío)", pct(a.p0), pct(b.p0), f"+{pct(b.p0 - a.p0)}"],
+            ["Lq (clientes en cola)", num(a.lq, 4), num(b.lq, 4),
+             f"−{num(mc.mejora_lq, 2)}%"],
+            ["L (clientes en sistema)", num(a.l, 4), num(b.l, 4),
+             f"−{num(mc.mejora_l, 2)}%"],
+            ["Wq (min en cola)", num(a.wq * 60, 2), num(b.wq * 60, 2),
+             f"−{num(mc.mejora_wq, 2)}%"],
+            ["W (min en sistema)", num(a.w * 60, 2), num(b.w * 60, 2),
+             f"−{num(mc.mejora_w, 2)}%"],
+            ["Pw (prob. de esperar)", pct(a.pw), pct(b.pw),
+             f"−{pct(a.pw - b.pw)}"],
+        ]
+        tabla(i, ["Indicador", "Actual", "Mejorado", "Cambio"], filas,
+              [280, 150, 150, 150])
+
+        insertar_figura(p, graficas_colas.figura_comparacion(self.modelo_colas, None),
+                        1000)
+        insertar_figura(p, graficas_colas.figura_pn(self.modelo_colas, None), 1000)
+        insertar_figura(p, graficas_colas.figura_resumen_colas(self.modelo_colas, None),
+                        1000)
+
+        colores = [C["azul"], C["morado"], C["verde"], C["ambar"], C["rojo"]]
+        for k, texto in enumerate(mc.texto_conclusion()):
+            titulo, _, cuerpo = texto.partition(". ")
+            i = tarjeta(p, titulo if len(titulo) < 70 else "",
+                        colores[k % len(colores)])
+            parrafo(i, cuerpo or texto)
+
+    # =================================================================
     #  EXPORTAR
     # =================================================================
     def exportar(self) -> None:
@@ -949,7 +1224,10 @@ class Aplicacion(tk.Tk):
         try:
             import main as prog
             archivos = graficas.generar_todas(self.modelo, carpeta)
-            texto = prog.construir_reporte(self.modelo, archivos)
+            archivos.update(
+                graficas_colas.generar_todas_colas(self.modelo_colas, carpeta))
+            texto = prog.construir_reporte(self.modelo, archivos, None,
+                                           self.modelo_colas)
             ruta = os.path.join(carpeta, "reporte.txt")
             with open(ruta, "w", encoding="utf-8") as fh:
                 fh.write(texto)
@@ -958,7 +1236,8 @@ class Aplicacion(tk.Tk):
             return
         self.etiqueta_pie.configure(text=f"Informe exportado a {carpeta}")
         messagebox.showinfo("Exportación completa",
-                            f"Se guardaron 7 figuras y el informe completo en:\n{carpeta}")
+                            f"Se guardaron todas las figuras (decisiones, juegos y "
+                            f"colas) y el informe completo en:\n{carpeta}")
 
 
 if __name__ == "__main__":
