@@ -29,7 +29,7 @@ from modelo import ModeloDecision, dinero, num, pct
 import config_colas as CC
 from colas import ModeloColas
 import graficas_colas
-
+from colas import ModeloColas, CalculadoraProbabilidades
 
 # =====================================================================
 #  PALETA Y ESTILO
@@ -74,6 +74,7 @@ PASOS = [
     (14, "Colas · Cálculo actual",   "14"),
     (15, "Colas · Mejora propuesta", "15"),
     (16, "Colas · Comparación",      "16"),
+    ("colas_calculadora", "Colas · Calculadora", "🧮"),
 ]
 
 
@@ -398,6 +399,7 @@ class Aplicacion(tk.Tk):
             14: self.pg_colas_actual,
             15: self.pg_colas_mejora,
             16: self.pg_colas_comparacion,
+            "colas_calculadora": self.pg_colas_calculadora,
         }[clave]
         constructor(self.area.interior)
         tk.Frame(self.area.interior, bg=C["fondo"], height=18).pack(fill="x")
@@ -1238,6 +1240,153 @@ class Aplicacion(tk.Tk):
         messagebox.showinfo("Exportación completa",
                             f"Se guardaron todas las figuras (decisiones, juegos y "
                             f"colas) y el informe completo en:\n{carpeta}")
+
+            # =================================================================
+    #  PÁGINA: CALCULADORA DE PROBABILIDADES
+    # =================================================================
+    def pg_colas_calculadora(self, p) -> None:
+        mc = self.modelo_colas
+        calc = CalculadoraProbabilidades(mc.actual.lambda_, mc.actual.mu)
+
+        i = tarjeta(p, "CALCULADORA DE PROBABILIDADES — POISSON Y EXPONENCIAL",
+                    C["azul"])
+        parrafo(i, "Esta calculadora te permite responder preguntas como: "
+                "«¿Cuál es la probabilidad de que lleguen 3 o más clientes en "
+                "30 minutos?» o «¿Cuál es la probabilidad de que el servicio "
+                "tarde menos de 45 segundos?». Útil para demostraciones en clase.",
+                color=C["texto_suave"])
+
+        # ---------------- POISSON ----------------
+        i = tarjeta(p, "1) DISTRIBUCIÓN DE POISSON (llegadas)", C["morado"])
+        formula(i, [
+            "P(X = x) = (λ·t)^x · e^(−λ·t) / x!",
+            f"λ = {num(mc.actual.lambda_, 4)} clientes/hora",
+        ])
+
+        rej = tk.Frame(i, bg=C["panel"]); rej.pack(anchor="w", pady=6)
+
+        tk.Label(rej, text="x (número de llegadas):", bg=C["panel"],
+                font=("DejaVu Sans", 10)).grid(row=0, column=0, sticky="w", pady=4)
+        var_x = tk.StringVar(value="3")
+        tk.Entry(rej, textvariable=var_x, width=10, justify="center").grid(
+            row=0, column=1, padx=10, ipady=3)
+
+        tk.Label(rej, text="Intervalo de tiempo (horas):", bg=C["panel"],
+                font=("DejaVu Sans", 10)).grid(row=1, column=0, sticky="w", pady=4)
+        var_t = tk.StringVar(value="1.0")
+        tk.Entry(rej, textvariable=var_t, width=10, justify="center").grid(
+            row=1, column=1, padx=10, ipady=3)
+
+        salida_poisson = tk.Label(i, text="", bg=C["panel"], fg=C["texto"],
+                                justify="left", anchor="w",
+                                font=("DejaVu Sans Mono", 11))
+        salida_poisson.pack(fill="x", pady=6)
+
+        def calcular_poisson():
+            try:
+                x = int(var_x.get())
+                factor = float(var_t.get().replace(",", "."))
+                if x < 0 or factor <= 0:
+                    raise ValueError
+            except ValueError:
+                salida_poisson.configure(
+                    text="⚠ Ingresa x (entero ≥ 0) y un intervalo positivo.",
+                    fg=C["rojo"])
+                return
+            calc = CalculadoraProbabilidades(mc.actual.lambda_, mc.actual.mu)
+            px = calc.poisson_exacta(x, factor)
+            ple = calc.poisson_acumulada(x, factor)
+            pge = calc.poisson_mayor_igual(x, factor)
+            lam_ef = mc.actual.lambda_ * factor
+            txt = (f"λ efectivo (λ·t) = {num(lam_ef, 4)}\n"
+                f"P(X = {x})   = {num(px, 6)}   ({pct(px)})\n"
+                f"P(X ≤ {x})   = {num(ple, 6)}   ({pct(ple)})\n"
+                f"P(X ≥ {x})   = {num(pge, 6)}   ({pct(pge)})")
+            salida_poisson.configure(text=txt, fg=C["texto"])
+
+        tk.Button(i, text="Calcular probabilidad Poisson",
+                command=calcular_poisson, bg=C["morado"], fg="white",
+                relief="flat", cursor="hand2", font=("DejaVu Sans", 10, "bold"),
+                padx=18, pady=8).pack(anchor="w", pady=4)
+
+        # Mostrar valores iniciales
+        calcular_poisson()
+
+        insertar_figura(p, graficas_colas.figura_poisson(
+            mc, None, x_hasta=15, factor_tiempo=float(var_t.get().replace(",", ".")),
+            x_marcado=int(var_x.get())), 1000)
+
+        # ---------------- EXPONENCIAL ----------------
+        i = tarjeta(p, "2) DISTRIBUCIÓN EXPONENCIAL (servicio)", C["verde"])
+        formula(i, [
+            "P(T ≤ t) = 1 − e^(−μ·t)",
+            "P(T > t) = e^(−μ·t)",
+            f"μ actual = {num(mc.actual.mu, 4)} clientes/hora",
+            f"μ mejorado = {num(mc.mejorado.mu, 4)} clientes/hora",
+        ])
+
+        rej = tk.Frame(i, bg=C["panel"]); rej.pack(anchor="w", pady=6)
+
+        tk.Label(rej, text="Tiempo t (segundos):", bg=C["panel"],
+                font=("DejaVu Sans", 10)).grid(row=0, column=0, sticky="w", pady=4)
+        var_tseg = tk.StringVar(value="45")
+        tk.Entry(rej, textvariable=var_tseg, width=10, justify="center").grid(
+            row=0, column=1, padx=10, ipady=3)
+
+        tk.Label(rej, text="¿Qué sistema?", bg=C["panel"],
+                font=("DejaVu Sans", 10)).grid(row=1, column=0, sticky="w", pady=4)
+        var_sis = tk.StringVar(value="actual")
+        ttk.Combobox(rej, textvariable=var_sis,
+                    values=["actual", "mejorado"], width=12,
+                    state="readonly").grid(row=1, column=1, padx=10, pady=4)
+
+        salida_exp = tk.Label(i, text="", bg=C["panel"], fg=C["texto"],
+                            justify="left", anchor="w",
+                            font=("DejaVu Sans Mono", 11))
+        salida_exp.pack(fill="x", pady=6)
+
+        def calcular_exponencial():
+            try:
+                t_s = float(var_tseg.get().replace(",", "."))
+                if t_s <= 0:
+                    raise ValueError
+            except ValueError:
+                salida_exp.configure(text="⚠ Ingresa un tiempo positivo (en segundos).",
+                                    fg=C["rojo"])
+                return
+            t_h = t_s / 3600.0
+            mu = (mc.mejorado.mu if var_sis.get() == "mejorado"
+                else mc.actual.mu)
+            calc = CalculadoraProbabilidades(mc.actual.lambda_, mu)
+            ple = calc.exponencial_menor(t_h)
+            pge = calc.exponencial_mayor(t_h)
+            txt = (f"t = {num(t_s, 2)} s = {num(t_h, 6)} h\n"
+                f"μ = {num(mu, 4)} clientes/hora\n"
+                f"P(T ≤ t) = {num(ple, 6)}   ({pct(ple)})\n"
+                f"P(T > t) = {num(pge, 6)}   ({pct(pge)})")
+            salida_exp.configure(text=txt, fg=C["texto"])
+
+        tk.Button(i, text="Calcular probabilidad exponencial",
+                command=calcular_exponencial, bg=C["verde"], fg="white",
+                relief="flat", cursor="hand2", font=("DejaVu Sans", 10, "bold"),
+                padx=18, pady=8).pack(anchor="w", pady=4)
+
+        calcular_exponencial()
+
+        insertar_figura(p, graficas_colas.figura_exponencial(
+            mc, None, t_max=0.05,
+            t_marcado=float(var_tseg.get().replace(",", ".")) / 3600.0), 1000)
+
+        # ---------------- EJEMPLO DEL PROFESOR ----------------
+        i = tarjeta(p, "3) EJEMPLO DE LA CLASE (P(X ≥ 3) con λ = ?)", C["ambar"])
+        parrafo(i, "En el tablero del profesor se calculó P(X ≥ 3) = 1 − P(X ≤ 2) "
+                "= 1 − (P₀ + P₁ + P₂) = 1 − 0.4219 ≈ 0.5781 → ~35 min. "
+                "Aquí puedes reproducir ese tipo de cálculo ingresando cualquier "
+                "λ y cualquier x.")
+        parrafo(i, "Sugerencia: prueba con λ = 2.6256 (el del sistema real) y "
+                "x = 3. Verás P(X ≥ 3) en el intervalo de 1 hora.",
+                color=C["texto_suave"])
+
 
 
 if __name__ == "__main__":

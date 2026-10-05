@@ -43,7 +43,7 @@ import graficas_Juegos
 import graficas_colas
 from juegos import JuegoSumaCero
 from modelo import ModeloDecision, dinero, num, pct
-from colas import ModeloColas
+from colas import ModeloColas, CalculadoraProbabilidades
 
 
 # =====================================================================
@@ -193,6 +193,7 @@ SECCIONES = [
     ("colas_actual", "Colas · 14 · Cálculo actual", "14"),
     ("colas_mejora", "Colas · 15 · Mejora", "15"),
     ("colas_comparacion", "Colas · 16 · Comparación", "16"),
+    ("colas_calculadora", "Colas · Calculadora", "🧮"),
 ]
 
 
@@ -218,7 +219,7 @@ class Tablero:
             self.jsec_contexto(), self.jsec1(), self.jsec2(), self.jsec3(),
             self.jsec4(), self.jsec5(), self.jsec6(),
             self.csec_contexto(), self.csec_datos(), self.csec_actual(),
-            self.csec_mejora(), self.csec_comparacion(),
+            self.csec_mejora(), self.csec_comparacion(), self.csec_calculadora(),
         ])
         m = self.m
         mc = self.mc
@@ -1158,6 +1159,111 @@ class Tablero:
                          parrafo(cuerpo or texto), colores[k % len(colores)])
         return self._envolver("colas_comparacion", "Colas · 16 · Comparación", c)
 
+    # =================================================================
+    #  SECCIÓN: CALCULADORA DE PROBABILIDADES
+    # =================================================================
+    def csec_calculadora(self) -> str:
+        mc = self.mc
+
+        x_poisson = getattr(ESTADO, "x_poisson", 3)
+        t_poisson = getattr(ESTADO, "t_poisson", 1.0)
+        t_exp = getattr(ESTADO, "t_exp", 45.0)
+        sis_exp = getattr(ESTADO, "sis_exp", "actual")
+
+        mu = mc.mejorado.mu if sis_exp == "mejorado" else mc.actual.mu
+        calc = CalculadoraProbabilidades(mc.actual.lambda_, mu)
+
+        # --- Resultados Poisson ---
+        px = calc.poisson_exacta(x_poisson, t_poisson)
+        ple = calc.poisson_acumulada(x_poisson, t_poisson)
+        pge = calc.poisson_mayor_igual(x_poisson, t_poisson)
+        lam_ef = mc.actual.lambda_ * t_poisson
+
+        # --- Resultados Exponencial ---
+        t_h = t_exp / 3600.0
+        p_exp_le = calc.exponencial_menor(t_h)
+        p_exp_gt = calc.exponencial_mayor(t_h)
+
+        # --- Formularios ---
+        f_poisson = (
+            f'<form method="post" action="/calcular_prob" id="frmp">'
+            f'<h4>Distribución de Poisson (llegadas)</h4>'
+            f'<p class="suave">P(X = x) = (λ·t)^x · e^(−λ·t) / x!</p>'
+            f'<div class="tabla-env"><table><tbody>'
+            f'<tr><td class="izq">x (número de llegadas)</td>'
+            f'<td><input name="x_poisson" value="{x_poisson}" inputmode="numeric"></td></tr>'
+            f'<tr><td class="izq">Intervalo de tiempo (horas)</td>'
+            f'<td><input name="t_poisson" value="{t_poisson}" inputmode="decimal"></td></tr>'
+            f'</tbody></table></div>'
+            f'<button class="btn morado" type="submit">Calcular Poisson</button>'
+            f'</form>')
+
+        f_exp = (
+            f'<form method="post" action="/calcular_prob" id="frme">'
+            f'<h4>Distribución exponencial (servicio)</h4>'
+            f'<p class="suave">P(T ≤ t) = 1 − e^(−μ·t)   ·   P(T > t) = e^(−μ·t)</p>'
+            f'<div class="tabla-env"><table><tbody>'
+            f'<tr><td class="izq">Tiempo t (segundos)</td>'
+            f'<td><input name="t_exp" value="{t_exp}" inputmode="decimal"></td></tr>'
+            f'<tr><td class="izq">Sistema</td><td>'
+            f'<select name="sis_exp">'
+            f'<option value="actual" {"selected" if sis_exp == "actual" else ""}>'
+            f'actual (μ = {mc.actual.mu:.4f})</option>'
+            f'<option value="mejorado" {"selected" if sis_exp == "mejorado" else ""}>'
+            f'mejorado (μ = {mc.mejorado.mu:.4f})</option>'
+            f'</select></td></tr>'
+            f'</tbody></table></div>'
+            f'<button class="btn verde" type="submit">Calcular exponencial</button>'
+            f'</form>')
+
+        # --- Panel de resultados Poisson ---
+        kpis_p = kpis([
+            ("λ efectivo (λ·t)", num(lam_ef, 4), "morado"),
+            (f"P(X = {x_poisson})", f"{num(px, 6)} ({pct(px)})", "azul"),
+            (f"P(X ≤ {x_poisson})", f"{num(ple, 6)} ({pct(ple)})", "verde"),
+            (f"P(X ≥ {x_poisson})", f"{num(pge, 6)} ({pct(pge)})", "ambar"),
+        ])
+
+        # --- Tabla completa de Poisson ---
+        filas_p = []
+        for i, p, ac, may in calc.tabla_poisson(min(15, x_poisson + 8), t_poisson):
+            filas_p.append([i, num(p, 6), pct(p), num(ac, 6), num(may, 6)])
+        tabla_p = tabla(["x", "P(X = x)", "%", "P(X ≤ x)", "P(X ≥ x)"],
+                        filas_p)
+
+        # --- Panel de resultados Exponencial ---
+        kpis_e = kpis([
+            (f"μ usado", num(mu, 4), "verde"),
+            (f"t = {num(t_exp, 2)} s = {num(t_h, 6)} h", "—", "gris"),
+            (f"P(T ≤ t)", f"{num(p_exp_le, 6)} ({pct(p_exp_le)})", "verde"),
+            (f"P(T > t)", f"{num(p_exp_gt, 6)} ({pct(p_exp_gt)})", "rojo"),
+        ])
+
+        c = tarjeta(
+            "Calculadora de probabilidades — Poisson y Exponencial",
+            parrafo("Esta calculadora permite responder preguntas como: "
+                    "«¿cuál es la probabilidad de que lleguen 3 o más clientes "
+                    "en 30 minutos?» o «¿cuál es la probabilidad de que el "
+                    "servicio tarde menos de 45 segundos?». Útil para "
+                    "demostraciones en clase con cualquier valor.", "suave"), "azul")
+
+        c += '<div class="rejilla">' + tarjeta(
+            "1) Poisson (llegadas)", f_poisson + kpis_p + tabla_p, "morado") \
+            + tarjeta(
+            "2) Exponencial (servicio)", f_exp + kpis_e, "verde") + '</div>'
+
+        c += tarjeta("3) Distribución de Poisson de las llegadas",
+                    figura(graficas_colas.figura_poisson(
+                        mc, None, x_hasta=max(15, x_poisson + 5),
+                        factor_tiempo=t_poisson, x_marcado=x_poisson)), "azul")
+
+        c += tarjeta("4) Distribución exponencial del tiempo de servicio",
+                    figura(graficas_colas.figura_exponencial(
+                        mc, None, t_max=max(0.05, t_h * 3),
+                        t_marcado=t_h)), "verde")
+
+        return self._envolver("colas_calculadora",
+                            "Colas · Calculadora de probabilidades", c)
 
     # -----------------------------------------------------------------
     def _envolver(self, clave: str, titulo: str, cuerpo: str) -> str:
@@ -1273,6 +1379,7 @@ input:focus{outline:2px solid #2563eb;border-color:#2563eb}
 cursor:pointer;color:#fff;text-decoration:none;display:inline-block}
 .btn.verde{background:#059669}.btn.verde:hover{background:#047857}
 .btn.azul{background:#2563eb}.btn.azul:hover{background:#1d4ed8}
+.btn.morado{background:#7c3aed}.btn.morado:hover{background:#6d28d9}
 .btn.gris{background:#e2e8f0;color:#0f172a}.btn.gris:hover{background:#cbd5e1}
 .pie{display:flex;justify-content:space-between;gap:12px;padding:10px 30px 30px;
 max-width:1180px}
@@ -1356,6 +1463,10 @@ class Estado:
         self.datos_colas = datos_colas_editables()
         self.modelo_colas = ModeloColas(self.datos_colas)
         self.mensaje = ""
+        self.x_poisson = 3
+        self.t_poisson = 1.0
+        self.t_exp = 45.0
+        self.sis_exp = "actual"
 
     def recalcular(self, campos: dict) -> None:
         d, m, jd, j = self.datos, self.modelo, self.datos_juego, self.juego
@@ -1478,6 +1589,20 @@ class Manejador(BaseHTTPRequestHandler):
                 ESTADO.restaurar()
             elif ruta == "/recalcular":
                 ESTADO.recalcular(campos)
+            elif ruta == "/calcular_prob":
+                try:
+                    ESTADO.x_poisson = int(campos.get("x_poisson", ESTADO.x_poisson))
+                    ESTADO.t_poisson = float(
+                        str(campos.get("t_poisson", ESTADO.t_poisson)).replace(",", "."))
+                    ESTADO.t_exp = float(
+                        str(campos.get("t_exp", ESTADO.t_exp)).replace(",", "."))
+                    ESTADO.sis_exp = campos.get("sis_exp", ESTADO.sis_exp)
+                except ValueError:
+                    self._enviar(pagina_error("Valor inválido",
+                                              "Los valores deben ser numéricos."), 400)
+                    return
+                self._redirigir("/#colas_calculadora")
+                return
             else:
                 self._enviar(b"No encontrado", 404, "text/plain; charset=utf-8")
                 return

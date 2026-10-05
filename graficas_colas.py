@@ -11,6 +11,7 @@ from __future__ import annotations
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import math
 from matplotlib.patches import FancyBboxPatch
 
 from colas import ModeloColas, _num as num, _pct as pct
@@ -241,6 +242,73 @@ def figura_resumen_colas(m: ModeloColas, carpeta):
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     return _guardar(fig, carpeta, "16_colas_resumen.png")
 
+# =====================================================================
+#  5. DISTRIBUCIÓN DE POISSON (llegadas)
+# =====================================================================
+def figura_poisson(m: ModeloColas, carpeta, x_hasta: int = 15,
+                   factor_tiempo: float = 1.0, x_marcado: int = None):
+    import math
+    fig, ax = plt.subplots(figsize=(11, 5.4))
+    xs = list(range(x_hasta + 1))
+    lam = m.actual.lambda_ * factor_tiempo
+    probs = [math.exp(-lam) * lam ** x / math.factorial(x) for x in xs]
+
+    colores = [ROJO if x == x_marcado else AZUL for x in xs]
+    ax.bar(xs, probs, color=colores, alpha=0.85, edgecolor="white", lw=1.2)
+
+    for x, p in zip(xs, probs):
+        if p > 0.002:
+            ax.text(x, p, f"{p:.4f}", ha="center", va="bottom", fontsize=8)
+
+    titulo = (f"Distribución de Poisson de las llegadas\n"
+              f"λ = {m.actual.lambda_:.4f} clientes/h · "
+              f"intervalo = {factor_tiempo:.2f} h · "
+              f"λ_efectivo = {lam:.4f}")
+    ax.set_title(titulo, fontsize=12.5, fontweight="bold")
+    ax.set_xlabel("x — Número de llegadas en el intervalo")
+    ax.set_ylabel("P(X = x)")
+    ax.set_xticks(xs)
+    ax.grid(axis="y", alpha=0.3, ls=":")
+    ax.set_axisbelow(True)
+    for lado in ("top", "right"):
+        ax.spines[lado].set_visible(False)
+    fig.tight_layout()
+    return _guardar(fig, carpeta, "17_colas_poisson.png")
+
+
+# =====================================================================
+#  6. DISTRIBUCIÓN EXPONENCIAL (servicio)
+# =====================================================================
+def figura_exponencial(m: ModeloColas, carpeta, t_max: float = 5.0,
+                       t_marcado: float = None):
+    import math
+    fig, ax = plt.subplots(figsize=(11, 5.4))
+    mu = m.actual.mu
+    ts = [i * t_max / 300 for i in range(301)]
+    pdf = [mu * math.exp(-mu * t) for t in ts]
+
+    ax.plot(ts, pdf, color=AZUL, lw=2.6, label=f"f(t) = μ·e^(−μt)  con μ = {mu:.2f}")
+
+    if t_marcado is not None and 0 <= t_marcado <= t_max:
+        ts_s = [t for t in ts if t <= t_marcado]
+        pdf_s = [mu * math.exp(-mu * t) for t in ts_s]
+        p = 1 - math.exp(-mu * t_marcado)
+        ax.fill_between(ts_s, pdf_s, alpha=0.45, color=VERDE,
+                        label=f"P(T ≤ {t_marcado:.4f} h) = {p:.4f}")
+        ax.axvline(t_marcado, color=VERDE, ls="--", lw=1.8)
+
+    ax.set_title(
+        f"Distribución exponencial del tiempo de servicio (μ = {mu:.4f} clientes/h)",
+        fontsize=12.5, fontweight="bold")
+    ax.set_xlabel("t — Tiempo de servicio (horas)")
+    ax.set_ylabel("f(t)")
+    ax.grid(alpha=0.3, ls=":")
+    ax.set_axisbelow(True)
+    for lado in ("top", "right"):
+        ax.spines[lado].set_visible(False)
+    ax.legend(fontsize=10)
+    fig.tight_layout()
+    return _guardar(fig, carpeta, "18_colas_exponencial.png")
 
 # =====================================================================
 #  ORQUESTADOR
@@ -251,4 +319,6 @@ def generar_todas_colas(m: ModeloColas, carpeta) -> dict:
         "colas_pn": figura_pn(m, carpeta),
         "colas_flujo": figura_flujo(m, carpeta),
         "colas_resumen": figura_resumen_colas(m, carpeta),
+        "colas_poisson": figura_poisson(m, carpeta),
+        "colas_exponencial": figura_exponencial(m, carpeta),
     }

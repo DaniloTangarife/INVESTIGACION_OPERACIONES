@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import config_colas as CC
-
+import math
 
 # =====================================================================
 #  UTILIDADES LOCALES (evitan dependencia circular con modelo.py)
@@ -266,3 +266,57 @@ class ModeloColas:
         )
 
         return partes
+
+class CalculadoraProbabilidades:
+    """Calculadora de las distribuciones base del modelo M/M/1.
+
+    - Poisson: P(X = x) = (λt)^x · e^(−λt) / x!
+    - Exponencial: P(T ≤ t) = 1 − e^(−μt)
+    """
+
+    def __init__(self, lambda_: float, mu: float):
+        self.lambda_ = lambda_
+        self.mu = mu
+
+    # ---------------- POISSON (llegadas) ----------------
+    def poisson_exacta(self, x: int, factor_tiempo: float = 1.0) -> float:
+        """P(X = x) en un intervalo de tiempo (factor × 1 hora)."""
+        if x < 0:
+            return 0.0
+        lam = self.lambda_ * factor_tiempo
+        return (lam ** x) * math.exp(-lam) / math.factorial(x)
+
+    def poisson_acumulada(self, x: int, factor_tiempo: float = 1.0) -> float:
+        """P(X ≤ x)."""
+        return sum(self.poisson_exacta(i, factor_tiempo)
+                   for i in range(x + 1))
+
+    def poisson_mayor_igual(self, x: int, factor_tiempo: float = 1.0) -> float:
+        """P(X ≥ x) = 1 − P(X ≤ x−1)."""
+        if x <= 0:
+            return 1.0
+        return 1.0 - self.poisson_acumulada(x - 1, factor_tiempo)
+
+    # ---------------- EXPONENCIAL (servicio) ----------------
+    def exponencial_menor(self, t: float) -> float:
+        """P(T ≤ t) con t en horas."""
+        return 1.0 - math.exp(-self.mu * t)
+
+    def exponencial_mayor(self, t: float) -> float:
+        """P(T > t) con t en horas."""
+        return math.exp(-self.mu * t)
+
+    def exponencial_entre(self, a: float, b: float) -> float:
+        """P(a ≤ T ≤ b) con a y b en horas."""
+        return math.exp(-self.mu * a) - math.exp(-self.mu * b)
+
+    # ---------------- Auxiliares para tablas ----------------
+    def tabla_poisson(self, x_max: int, factor_tiempo: float = 1.0):
+        """Lista de (x, P(X=x), P(X≤x), P(X≥x)) para x = 0..x_max."""
+        filas = []
+        acum = 0.0
+        for x in range(x_max + 1):
+            p = self.poisson_exacta(x, factor_tiempo)
+            acum += p
+            filas.append((x, p, acum, max(0.0, 1.0 - (acum - p))))
+        return filas
