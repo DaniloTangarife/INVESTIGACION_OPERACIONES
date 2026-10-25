@@ -31,13 +31,18 @@ from colas import ModeloColas
 import reporte as R
 import reporte_Juegos as RJ
 import reporte_colas as RC
+import config_proyectos as CP
+from proyectos import ModeloProyecto
+import reporte_proyectos as RP
 
 ESCENARIOS_SENSIBILIDAD = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 
 def construir_reporte(m: ModeloDecision, archivos: dict,
                       juego: JuegoSumaCero | None = None,
-                      colas: ModeloColas | None = None) -> str:
+                      colas: ModeloColas | None = None,
+                      proyecto: list[ModeloProyecto] | None = None
+                      ) -> str:
     bloques = [
         R.portada(m),
         R.paso1(m),
@@ -61,6 +66,8 @@ def construir_reporte(m: ModeloDecision, archivos: dict,
         bloques.append(RJ.reporte_juego(juego, archivos))
     if colas is not None:
         bloques.append(RC.reporte_colas(colas, archivos))
+    if proyecto is not None:
+        bloques.append(RP.reporte_proyecto(proyecto))
     if archivos:
         listado = ["Figuras generadas automáticamente:"] + \
                   [f"• {k}: {v}" for k, v in archivos.items() if v]
@@ -118,6 +125,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n❌ Error en el modelo de colas:\n{err}\n")
             colas = None
 
+        # --- Modelo de Proyectos ---
+    proyecto = None
+    if not args.solo_decisiones and not args.solo_juegos and not args.solo_colas:
+        try:
+            proyecto = ModeloProyecto(CP)
+        except ValueError as err:
+            print(f"\n❌ Error en el modelo de proyectos:\n{err}\n")
+            proyecto = None
+
     # --- Generación de figuras ---
     archivos: dict[str, str] = {}
     if not args.sin_graficas:
@@ -129,12 +145,15 @@ def main(argv: list[str] | None = None) -> int:
         if colas is not None:
             import graficas_colas
             archivos.update(graficas_colas.generar_todas_colas(colas, args.salida))
+        if proyecto is not None:
+            import graficas_proyectos
+            archivos.update(graficas_proyectos.generar_todas_proyectos(proyecto, args.salida))
 
     # --- Generación del reporte ---
     if args.solo_juegos and juego is not None:
         texto = RJ.reporte_juego(juego, archivos)
     else:
-        texto = construir_reporte(modelo, archivos, juego, colas)
+        texto = construir_reporte(modelo, archivos, juego, colas, proyecto)
     print(texto)
 
     for aviso in modelo.avisos + (juego.avisos if juego else []):

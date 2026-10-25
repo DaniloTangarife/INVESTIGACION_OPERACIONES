@@ -6,8 +6,8 @@
 Aplicación de escritorio (Tkinter + Matplotlib) que presenta los
 pasos del proyecto en un entorno visual navegable, con los datos del
 problema editables en vivo: al cambiar la matriz de pagos, las
-probabilidades o los datos de colas, todo el estudio se recalcula y
-todas las pantallas se redibujan.
+probabilidades, los datos de colas o del proyecto, todo el estudio 
+se recalcula y todas las pantallas se redibujan.
 
 Ejecutar:  python app.py
 =====================================================================
@@ -27,9 +27,12 @@ import graficas
 from modelo import ModeloDecision, dinero, num, pct
 
 import config_colas as CC
-from colas import ModeloColas
-import graficas_colas
 from colas import ModeloColas, CalculadoraProbabilidades
+import graficas_colas
+
+import config_proyectos as CP
+from proyectos import ModeloProyecto
+import graficas_proyectos
 
 # =====================================================================
 #  PALETA Y ESTILO
@@ -75,6 +78,9 @@ PASOS = [
     (15, "Colas · Mejora propuesta", "15"),
     (16, "Colas · Comparación",      "16"),
     ("colas_calculadora", "Colas · Calculadora", "🧮"),
+    ("proyecto_contexto", "Proyecto · Contexto", "📋"),
+    ("proyecto_red", "Proyecto · Red y Tiempos", "🔗"),
+    ("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", "📊"),
 ]
 
 
@@ -214,8 +220,13 @@ class Aplicacion(tk.Tk):
 
         self.datos = self._datos_iniciales()
         self.modelo = ModeloDecision(self.datos)
+        
         self.datos_colas = self._datos_colas_iniciales()
         self.modelo_colas = ModeloColas(self.datos_colas)
+        
+        self.datos_proyecto = CP
+        self.modelo_proyecto = ModeloProyecto(self.datos_proyecto)
+        
         self.actual = "contexto"
         self.botones: dict = {}
         self.entradas: dict = {}
@@ -288,7 +299,7 @@ class Aplicacion(tk.Tk):
         tk.Label(cab, text="INVESTIGACIÓN\nDE OPERACIONES", bg=C["azul"], fg="white",
                  font=("DejaVu Sans", 13, "bold"), justify="left").pack(
             anchor="w", padx=20, pady=(20, 4))
-        tk.Label(cab, text="Decisiones · Juegos · Colas",
+        tk.Label(cab, text="Decisiones · Juegos · Colas · Proyectos",
                  bg=C["azul"], fg="#bfdbfe", font=("DejaVu Sans", 9),
                  justify="left").pack(anchor="w", padx=20, pady=(0, 18))
 
@@ -379,10 +390,12 @@ class Aplicacion(tk.Tk):
             text=titulo if isinstance(clave, str) else f"Paso {clave} — {titulo}")
         m = self.modelo
         mc = self.modelo_colas
+        mp = self.modelo_proyecto
+        
         self.resumen_barra.configure(
-            text=f"Óptima: {m.alt_optima_prior} · {dinero(m.ev_optimo_prior)}    |    "
-                 f"Eficiencia: {pct(m.eficiencia)}    |    "
-                 f"Colas: ρ = {pct(mc.actual.rho)} → {pct(mc.mejorado.rho)}")
+            text=f"Óptima: {m.alt_optima_prior} · {dinero(m.ev_optimo_prior)} | "
+                 f"Colas: {pct(mc.actual.rho)}→{pct(mc.mejorado.rho)} | "
+                 f"Proyecto: {num(mp.duracion_total, 1)} min")
 
         for w in self.area.interior.winfo_children():
             w.destroy()
@@ -400,6 +413,9 @@ class Aplicacion(tk.Tk):
             15: self.pg_colas_mejora,
             16: self.pg_colas_comparacion,
             "colas_calculadora": self.pg_colas_calculadora,
+            "proyecto_contexto": self.pg_proyecto_contexto,
+            "proyecto_red": self.pg_proyecto_red,
+            "proyecto_gantt": self.pg_proyecto_gantt,
         }[clave]
         constructor(self.area.interior)
         tk.Frame(self.area.interior, bg=C["fondo"], height=18).pack(fill="x")
@@ -443,7 +459,8 @@ class Aplicacion(tk.Tk):
                   "4. Evaluar, con el Teorema de Bayes, si una consultoría jurídica "
                   "previa cambiaría la decisión (EVSI).",
                   "5. Analizar el sistema de colas de la venta de tiquetes (M/M/1).",
-                  "6. Concluir con cifras si conviene o no pagar esa consultoría."]:
+                  "6. Concluir con cifras si conviene o no pagar esa consultoría.",
+                  "7. Optimizar el proyecto de despacho de un bus (PERT/CPM)."]:
             parrafo(i, t, pady=(3, 0))
 
         # Origen de los datos — destacado
@@ -666,6 +683,8 @@ class Aplicacion(tk.Tk):
         self.modelo = ModeloDecision(self.datos)
         self.datos_colas = self._datos_colas_iniciales()
         self.modelo_colas = ModeloColas(self.datos_colas)
+        self.datos_proyecto = CP
+        self.modelo_proyecto = ModeloProyecto(self.datos_proyecto)
         self.mostrar("datos")
 
     # =================================================================
@@ -1217,31 +1236,6 @@ class Aplicacion(tk.Tk):
             parrafo(i, cuerpo or texto)
 
     # =================================================================
-    #  EXPORTAR
-    # =================================================================
-    def exportar(self) -> None:
-        carpeta = filedialog.askdirectory(title="Carpeta donde guardar el informe")
-        if not carpeta:
-            return
-        try:
-            import main as prog
-            archivos = graficas.generar_todas(self.modelo, carpeta)
-            archivos.update(
-                graficas_colas.generar_todas_colas(self.modelo_colas, carpeta))
-            texto = prog.construir_reporte(self.modelo, archivos, None,
-                                           self.modelo_colas)
-            ruta = os.path.join(carpeta, "reporte.txt")
-            with open(ruta, "w", encoding="utf-8") as fh:
-                fh.write(texto)
-        except Exception as err:
-            messagebox.showerror("Error al exportar", str(err))
-            return
-        self.etiqueta_pie.configure(text=f"Informe exportado a {carpeta}")
-        messagebox.showinfo("Exportación completa",
-                            f"Se guardaron todas las figuras (decisiones, juegos y "
-                            f"colas) y el informe completo en:\n{carpeta}")
-
-            # =================================================================
     #  PÁGINA: CALCULADORA DE PROBABILIDADES
     # =================================================================
     def pg_colas_calculadora(self, p) -> None:
@@ -1387,6 +1381,56 @@ class Aplicacion(tk.Tk):
                 "x = 3. Verás P(X ≥ 3) en el intervalo de 1 hora.",
                 color=C["texto_suave"])
 
+    # =================================================================
+    #  PÁGINAS DE DIRECCIÓN DE PROYECTOS
+    # =================================================================
+    def pg_proyecto_contexto(self, p):
+        d, m = self.datos_proyecto, self.modelo_proyecto
+        i = tarjeta(p, "DIRECCIÓN DE PROYECTOS — DESPACHO DE UN BUS", C["azul"])
+        parrafo(i, d.CONTEXTO_PROYECTO)
+        parrafo(i, f"Duración total esperada (Ruta Crítica): {num(m.duracion_total, 2)} minutos.", negrita=True)
+        
+        i = tarjeta(p, "TABLA DE ACTIVIDADES (PERT)", C["morado"])
+        filas = [[a.id, a.nombre, ", ".join(a.pre) or "—", num(a.O,0), num(a.M,0), num(a.P,0), num(a.te, 2)] for a in m.actividades.values()]
+        tabla(i, ["ID", "Actividad", "Predecesoras", "O", "M", "P", "TE"], filas, [60, 300, 150, 60, 60, 60, 80])
+
+    def pg_proyecto_red(self, p):
+        i = tarjeta(p, "RED DEL PROYECTO Y CÁLCULO DE TIEMPOS", C["verde"])
+        parrafo(i, "Las actividades en rojo son críticas. Si se retrasan, el bus sale tarde.")
+        insertar_figura(p, graficas_proyectos.figura_red(self.modelo_proyecto, None), 1000)
+
+    def pg_proyecto_gantt(self, p):
+        m = self.modelo_proyecto
+        i = tarjeta(p, "RUTA CRÍTICA Y HOLGURAS", C["rojo"])
+        parrafo(i, f"Ruta Crítica: {' → '.join(m.criticas)}")
+        parrafo(i, f"Probabilidad de salir en <= {m.cfg.TIEMPO_META} min: {pct(m.probabilidad)}", negrita=True)
+        insertar_figura(p, graficas_proyectos.figura_gantt(m, None), 1000)
+
+    # =================================================================
+    #  EXPORTAR
+    # =================================================================
+    def exportar(self) -> None:
+        carpeta = filedialog.askdirectory(title="Carpeta donde guardar el informe")
+        if not carpeta:
+            return
+        try:
+            import main as prog
+            archivos = graficas.generar_todas(self.modelo, carpeta)
+            archivos.update(graficas_colas.generar_todas_colas(self.modelo_colas, carpeta))
+            archivos.update(graficas_proyectos.generar_todas_proyectos(self.modelo_proyecto, carpeta))
+            
+            texto = prog.construir_reporte(self.modelo, archivos, None,
+                                           self.modelo_colas, self.modelo_proyecto)
+            ruta = os.path.join(carpeta, "reporte.txt")
+            with open(ruta, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+        except Exception as err:
+            messagebox.showerror("Error al exportar", str(err))
+            return
+        self.etiqueta_pie.configure(text=f"Informe exportado a {carpeta}")
+        messagebox.showinfo("Exportación completa",
+                            f"Se guardaron todas las figuras (decisiones, colas y "
+                            f"proyectos) y el informe completo en:\n{carpeta}")
 
 
 if __name__ == "__main__":

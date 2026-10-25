@@ -38,12 +38,15 @@ from types import SimpleNamespace
 import config as CFG
 import config_Juegos as CJ
 import config_colas as CC
+import config_proyectos as CP
 import graficas
 import graficas_Juegos
 import graficas_colas
+import graficas_proyectos
 from juegos import JuegoSumaCero
 from modelo import ModeloDecision, dinero, num, pct
 from colas import ModeloColas, CalculadoraProbabilidades
+from proyectos import ModeloProyecto
 
 
 # =====================================================================
@@ -194,6 +197,9 @@ SECCIONES = [
     ("colas_mejora", "Colas · 15 · Mejora", "15"),
     ("colas_comparacion", "Colas · 16 · Comparación", "16"),
     ("colas_calculadora", "Colas · Calculadora", "🧮"),
+    ("proyecto_contexto", "Proyecto · Contexto", "📋"),
+    ("proyecto_red", "Proyecto · Red y Tiempos", "🔗"),
+    ("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", "📊"),
 ]
 
 
@@ -201,12 +207,14 @@ class Tablero:
     """Genera el HTML completo del estudio a partir del modelo."""
 
     def __init__(self, modelo: ModeloDecision, juego: JuegoSumaCero,
-                 modelo_colas: ModeloColas, interactivo: bool = True):
+                 modelo_colas: ModeloColas, modelo_proyecto: ModeloProyecto, interactivo: bool = True):
         self.m = modelo
         self.d = modelo.cfg
         self.j = juego
         self.mc = modelo_colas
         self.dc = modelo_colas.cfg
+        self.mp = modelo_proyecto
+        self.dp = modelo_proyecto.cfg
         self.interactivo = interactivo
 
     # -----------------------------------------------------------------
@@ -220,9 +228,11 @@ class Tablero:
             self.jsec4(), self.jsec5(), self.jsec6(),
             self.csec_contexto(), self.csec_datos(), self.csec_actual(),
             self.csec_mejora(), self.csec_comparacion(), self.csec_calculadora(),
+            self.psec_contexto(), self.psec_red(), self.psec_gantt(),
         ])
         m = self.m
         mc = self.mc
+        mp = self.mp
         nav = "".join(
             f'<a class="nav-it" data-ir="{k}"><span class="nav-ic">{esc(ic)}</span>'
             f'<span>{esc(t)}</span></a>' for k, t, ic in SECCIONES)
@@ -231,7 +241,8 @@ class Tablero:
                    f'Eficiencia: <b>{esc(pct(m.eficiencia))}</b>'
                    f' &nbsp;|&nbsp; Juego: <b>{esc(num(self.j.valor_juego, 2))}</b>'
                    f' &nbsp;|&nbsp; Colas ρ: <b>{esc(pct(mc.actual.rho))}</b> → '
-                   f'<b>{esc(pct(mc.mejorado.rho))}</b>')
+                   f'<b>{esc(pct(mc.mejorado.rho))}</b>'
+                   f' &nbsp;|&nbsp; Proyecto: <b>{num(mp.duracion_total, 1)} min</b>')
         return PLANTILLA.format(
             titulo=esc(self.d.TITULO), subtitulo=esc(self.d.SUBTITULO),
             curso=esc(self.d.CURSO), nav=nav, secciones=secciones,
@@ -272,7 +283,8 @@ class Tablero:
             "Evaluar, con el Teorema de Bayes, si una consultoría jurídica previa "
             "cambiaría la decisión (EVSI).",
             "Analizar el sistema de colas de la venta de tiquetes (M/M/1).",
-            "Concluir con cifras si conviene o no pagar esa consultoría."])
+            "Concluir con cifras si conviene o no pagar esa consultoría.",
+            "Optimizar el proyecto de despacho de un bus (PERT/CPM)."])
         c3 = tarjeta("¿Qué se busca con este estudio?", f"<ol>{objetivos}</ol>", "verde")
 
         c4 = tarjeta(
@@ -1265,6 +1277,29 @@ class Tablero:
         return self._envolver("colas_calculadora",
                             "Colas · Calculadora de probabilidades", c)
 
+    # =================================================================
+    #  SECCIONES DE DIRECCIÓN DE PROYECTOS
+    # =================================================================
+    def psec_contexto(self) -> str:
+        mp, dp = self.mp, self.dp
+        c = tarjeta("Dirección de Proyectos — Despacho de un bus",
+                    parrafo(dp.CONTEXTO_PROYECTO), "azul")
+        filas = [[a.id, a.nombre, ", ".join(a.pre) or "—", num(a.O,0), num(a.M,0), num(a.P,0), num(a.te,2)] for a in mp.actividades.values()]
+        c += tarjeta("Tabla de Actividades (PERT)", tabla(["ID", "Actividad", "Predecesoras", "O", "M", "P", "TE"], filas), "morado")
+        return self._envolver("proyecto_contexto", "Proyecto · Contexto", c)
+
+    def psec_red(self) -> str:
+        c = tarjeta("Red del Proyecto", figura(graficas_proyectos.figura_red(self.mp, None)), "verde")
+        return self._envolver("proyecto_red", "Proyecto · Red y Tiempos", c)
+
+    def psec_gantt(self) -> str:
+        mp = self.mp
+        c = tarjeta("Ruta Crítica y Probabilidad",
+                    parrafo(f"Ruta Crítica: {' → '.join(mp.criticas)}")
+                    + parrafo(f"Duración: {num(mp.duracion_total, 2)} min. Probabilidad de cumplir meta: {pct(mp.probabilidad)}", "ok")
+                    + figura(graficas_proyectos.figura_gantt(mp, None)), "rojo")
+        return self._envolver("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", c)
+
     # -----------------------------------------------------------------
     def _envolver(self, clave: str, titulo: str, cuerpo: str) -> str:
         return (f'<div class="seccion" id="{esc(clave)}">'
@@ -1435,7 +1470,7 @@ PLANTILLA = """<!DOCTYPE html>
 <title>{titulo}</title><style>{css}</style></head><body>
 <aside>
   <div class="marca"><h1>INVESTIGACIÓN<br>DE OPERACIONES</h1>
-  <p>Decisiones · Juegos · Colas</p></div>
+  <p>Decisiones · Juegos · Colas · Proyectos</p></div>
   <nav>{nav}</nav>
 </aside>
 <main>
@@ -1462,6 +1497,7 @@ class Estado:
         self.juego = JuegoSumaCero(self.datos_juego)
         self.datos_colas = datos_colas_editables()
         self.modelo_colas = ModeloColas(self.datos_colas)
+        self.modelo_proyecto = ModeloProyecto(CP)
         self.mensaje = ""
         self.x_poisson = 3
         self.t_poisson = 1.0
@@ -1508,6 +1544,7 @@ class Estado:
         self.juego = JuegoSumaCero(self.datos_juego)
         self.datos_colas = datos_colas_editables()
         self.modelo_colas = ModeloColas(self.datos_colas)
+        self.modelo_proyecto = ModeloProyecto(CP)
 
 
 ESTADO = Estado()
@@ -1544,7 +1581,7 @@ class Manejador(BaseHTTPRequestHandler):
         ruta = urllib.parse.urlparse(self.path).path
         if ruta in ("/", "/index.html"):
             self._enviar(Tablero(ESTADO.modelo, ESTADO.juego,
-                                 ESTADO.modelo_colas).html().encode("utf-8"))
+                                 ESTADO.modelo_colas, ESTADO.modelo_proyecto).html().encode("utf-8"))
         elif ruta == "/exportar":
             try:
                 carpeta = os.path.abspath(ESTADO.datos.CARPETA_SALIDA)
@@ -1554,15 +1591,20 @@ class Manejador(BaseHTTPRequestHandler):
                     ESTADO.juego, carpeta))
                 archivos.update(graficas_colas.generar_todas_colas(
                     ESTADO.modelo_colas, carpeta))
+                archivos.update(graficas_proyectos.generar_todas_proyectos(
+                    ESTADO.modelo_proyecto, carpeta))
+                
                 with open(os.path.join(carpeta, "reporte.txt"), "w",
                           encoding="utf-8") as fh:
                     fh.write(prog.construir_reporte(ESTADO.modelo, archivos,
                                                     ESTADO.juego,
-                                                    ESTADO.modelo_colas))
+                                                    ESTADO.modelo_colas,
+                                                    ESTADO.modelo_proyecto))
                 with open(os.path.join(carpeta, "tablero.html"), "w",
                           encoding="utf-8") as fh:
                     fh.write(Tablero(ESTADO.modelo, ESTADO.juego,
                                      ESTADO.modelo_colas,
+                                     ESTADO.modelo_proyecto,
                                      interactivo=False).html())
                 cuerpo = tarjeta(
                     "Exportación completada",
@@ -1640,8 +1682,9 @@ def main() -> int:
         modelo = ModeloDecision(datos_editables())
         juego = JuegoSumaCero(datos_juego_editables())
         modelo_colas = ModeloColas(datos_colas_editables())
+        modelo_proyecto = ModeloProyecto(CP)
         with open(args.salida, "w", encoding="utf-8") as fh:
-            fh.write(Tablero(modelo, juego, modelo_colas,
+            fh.write(Tablero(modelo, juego, modelo_colas, modelo_proyecto,
                              interactivo=False).html())
         print(f"✔ Tablero generado: {os.path.abspath(args.salida)}")
         return 0
