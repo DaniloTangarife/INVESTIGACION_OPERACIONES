@@ -200,6 +200,8 @@ SECCIONES = [
     ("proyecto_contexto", "Proyecto · Contexto", "📋"),
     ("proyecto_red", "Proyecto · Red y Tiempos", "🔗"),
     ("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", "📊"),
+    ("proyecto_paso_a_paso", "Proyecto · Paso a Paso", "📝"),
+    ("proyecto_costo_tiempo", "Proyecto · Tiempo y Costo", "💰"),
 ]
 
 
@@ -229,6 +231,8 @@ class Tablero:
             self.csec_contexto(), self.csec_datos(), self.csec_actual(),
             self.csec_mejora(), self.csec_comparacion(), self.csec_calculadora(),
             self.psec_contexto(), self.psec_red(), self.psec_gantt(),
+            self.psec_red(), self.psec_gantt(),
+            self.psec_paso_a_paso(), self.psec_costo_tiempo(),
         ])
         m = self.m
         mc = self.mc
@@ -1300,6 +1304,44 @@ class Tablero:
                     + figura(graficas_proyectos.figura_gantt(mp, None)), "rojo")
         return self._envolver("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", c)
 
+    def psec_paso_a_paso(self) -> str:
+        mp = self.mp
+        mp.calcular_crashing() # Aseguramos que esté calculado
+        lineas = mp.texto_paso_a_paso()
+        c = tarjeta("Paso a paso del cálculo de la red",
+                    parrafo("A continuación se detalla cómo se calculó el programa factible usando Forward Pass (adelante) y Backward Pass (atrás).", "suave")
+                    + formula(lineas), "azul")
+        return self._envolver("proyecto_paso_a_paso", "Proyecto · Paso a Paso", c)
+
+    def psec_costo_tiempo(self) -> str:
+        mp = self.mp
+        mp.calcular_crashing()
+        
+        # 1. Tabla de datos de costos
+        filas_datos = []
+        for a in mp.actividades.values():
+            filas_datos.append([a.id, num(a.Tn,1), f"${a.Cn:,.0f}".replace(",", "."), 
+                                num(a.Tc,1), f"${a.Cc:,.0f}".replace(",", "."), 
+                                f"${a.S:,.0f}".replace(",", ".")])
+        c = tarjeta("Datos de Costo de las Actividades",
+                    tabla(["ID", "T. Normal", "Costo Normal", "T. Urgencia", "Costo Urgencia", "Costo Reducción (S)"], filas_datos), "ambar")
+
+        # 2. Historial de Crashing
+        filas_iter = []
+        for i in mp.iteraciones_crashing:
+            filas_iter.append([i["iter"], i["actividad"], num(i["tiempo_proyecto"],1),
+                               f"${i['costo_extra']:,.0f}".replace(",", "."),
+                               f"${i['costo_total']:,.0f}".replace(",", "."),
+                               " → ".join(i["ruta"])])
+        c += tarjeta("Historial de Reducción (Crashing)",
+                     parrafo(f"El algoritmo redujo el proyecto de {num(mp.iteraciones_crashing[0]['tiempo_proyecto'],1)} min a {num(mp.duracion_minima,1)} min. Costo total final: ${mp.costo_maximo:,.0f} COP.".replace(",", "."), "ok")
+                     + tabla(["Iter", "Actividad Reducida", "Tiempo Proyecto", "Costo Extra", "Costo Acumulado", "Nueva Ruta Crítica"], filas_iter), "rojo")
+
+        # 3. Gráfica
+        c += tarjeta("Curva de Intercambio Tiempo-Costo",
+                     figura(graficas_proyectos.figura_curva_costo_tiempo(mp, None)), "verde")
+        
+        return self._envolver("proyecto_costo_tiempo", "Proyecto · Tiempo y Costo", c)
     # -----------------------------------------------------------------
     def _envolver(self, clave: str, titulo: str, cuerpo: str) -> str:
         return (f'<div class="seccion" id="{esc(clave)}">'

@@ -81,6 +81,8 @@ PASOS = [
     ("proyecto_contexto", "Proyecto · Contexto", "📋"),
     ("proyecto_red", "Proyecto · Red y Tiempos", "🔗"),
     ("proyecto_gantt", "Proyecto · Gantt y Ruta Crítica", "📊"),
+    ("proyecto_paso_a_paso", "Proyecto · Paso a Paso", "📝"),
+    ("proyecto_costo_tiempo", "Proyecto · Tiempo y Costo", "💰"),
 ]
 
 
@@ -416,6 +418,8 @@ class Aplicacion(tk.Tk):
             "proyecto_contexto": self.pg_proyecto_contexto,
             "proyecto_red": self.pg_proyecto_red,
             "proyecto_gantt": self.pg_proyecto_gantt,
+            "proyecto_paso_a_paso": self.pg_proyecto_paso_a_paso,
+            "proyecto_costo_tiempo": self.pg_proyecto_costo_tiempo,
         }[clave]
         constructor(self.area.interior)
         tk.Frame(self.area.interior, bg=C["fondo"], height=18).pack(fill="x")
@@ -1405,6 +1409,41 @@ class Aplicacion(tk.Tk):
         parrafo(i, f"Ruta Crítica: {' → '.join(m.criticas)}")
         parrafo(i, f"Probabilidad de salir en <= {m.cfg.TIEMPO_META} min: {pct(m.probabilidad)}", negrita=True)
         insertar_figura(p, graficas_proyectos.figura_gantt(m, None), 1000)
+
+    def pg_proyecto_paso_a_paso(self, p):
+        mp = self.modelo_proyecto
+        mp.calcular_crashing()
+        lineas = mp.texto_paso_a_paso()
+        
+        i = tarjeta(p, "PASO A PASO DEL CÁLCULO DE LA RED", C["azul"])
+        parrafo(i, "A continuación se detalla cómo se calculó el programa factible usando Forward Pass (adelante) y Backward Pass (atrás).", color=C["texto_suave"])
+        formula(i, lineas)
+
+    def pg_proyecto_costo_tiempo(self, p):
+        mp = self.modelo_proyecto
+        mp.calcular_crashing()
+        
+        i = tarjeta(p, "DATOS DE COSTO DE LAS ACTIVIDADES", C["ambar"])
+        filas_datos = []
+        for a in mp.actividades.values():
+            filas_datos.append([a.id, num(a.Tn,1), f"${a.Cn:,.0f}".replace(",", "."), 
+                                num(a.Tc,1), f"${a.Cc:,.0f}".replace(",", "."), 
+                                f"${a.S:,.0f}".replace(",", ".")])
+        tabla(i, ["ID", "T. Normal", "Costo Normal", "T. Urgencia", "Costo Urgencia", "Costo Reducción"], filas_datos, [80, 100, 120, 100, 120, 120])
+
+        i = tarjeta(p, "HISTORIAL DE REDUCCIÓN (CRASHING)", C["rojo"])
+        parrafo(i, f"El algoritmo redujo el proyecto de {num(mp.iteraciones_crashing[0]['tiempo_proyecto'],1)} min a {num(mp.duracion_minima,1)} min. Costo total final: ${mp.costo_maximo:,.0f} COP.".replace(",", "."), negrita=True, color=C["verde"])
+        
+        filas_iter = []
+        for it in mp.iteraciones_crashing:
+            filas_iter.append([it["iter"], it["actividad"], num(it["tiempo_proyecto"],1),
+                               f"${it['costo_extra']:,.0f}".replace(",", "."),
+                               f"${it['costo_total']:,.0f}".replace(",", "."),
+                               " → ".join(it["ruta"])])
+        tabla(i, ["Iter", "Reducida", "Tiempo", "Costo Extra", "Costo Acum.", "Ruta Crítica"], filas_iter, [60, 100, 80, 100, 120, 300])
+
+        i = tarjeta(p, "CURVA DE INTERCAMBIO TIEMPO-COSTO", C["verde"])
+        insertar_figura(p, graficas_proyectos.figura_curva_costo_tiempo(mp, None), 1000)
 
     # =================================================================
     #  EXPORTAR

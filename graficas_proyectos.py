@@ -144,3 +144,49 @@ def figura_gantt(m: ModeloProyecto, carpeta):
     ax.grid(axis="x", alpha=0.3, ls=":")
     fig.tight_layout()
     return _guardar(fig, carpeta, "20_proyecto_gantt.png")
+
+# =====================================================================
+#  3. CURVA DE INTERCAMBIO TIEMPO - COSTO (CRASHING)
+# =====================================================================
+def figura_curva_costo_tiempo(m: ModeloProyecto, carpeta):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Extraer datos del historial
+    tiempos = [i["tiempo_proyecto"] for i in m.iteraciones_crashing]
+    costos = [i["costo_total"] for i in m.iteraciones_crashing]
+    
+    # Asegurarnos de que no haya duplicados en X para la gráfica
+    datos_unicos = {}
+    for t, c in zip(tiempos, costos):
+        if t not in datos_unicos or c > datos_unicos[t]:
+            datos_unicos[t] = c
+            
+    xs = sorted(datos_unicos.keys(), reverse=True) # De mayor tiempo a menor
+    ys = [datos_unicos[x] for x in xs]
+
+    ax.plot(xs, ys, marker='o', color=ROJO, lw=2.5, markersize=8, label="Curva de Intercambio")
+    
+    # Marcar el punto inicial (Normal)
+    ax.plot(xs[0], ys[0], marker='s', color=AZUL, markersize=10, label="Operación Normal (Más lento, más barato)")
+    
+    # Marcar el punto final (Urgencia)
+    if len(xs) > 1:
+        ax.plot(xs[-1], ys[-1], marker='^', color=VERDE, markersize=10, label="Operación Urgente (Más rápido, más caro)")
+
+    # Anotaciones
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        if i == 0 or i == len(xs)-1 or i % max(1, len(xs)//5) == 0:
+            ax.annotate(f"{num(x,1)} min\n${y/1000:.0f}k", (x, y), 
+                        textcoords="offset points", xytext=(0, -25), ha="center", fontsize=9)
+
+    ax.set_xlabel("Duración del Proyecto (minutos)", fontsize=12)
+    ax.set_ylabel("Costo Total Acumulado (COP)", fontsize=12)
+    ax.set_title("Curva de Intercambio Tiempo-Costo (Crashing)", fontsize=14, fontweight="bold")
+    ax.grid(True, ls=":", alpha=0.6)
+    ax.legend()
+    
+    # Formatear eje Y
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x/1000:.0f}k"))
+    
+    fig.tight_layout()
+    return _guardar(fig, carpeta, "21_proyecto_costo_tiempo.png")
